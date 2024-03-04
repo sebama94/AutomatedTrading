@@ -14,17 +14,18 @@ input int fastEMA = 12;
 input int slowEMA = 26;
 input int signalSMA = 9;
 input int rsiPeriod = 14;
-input double overboughtLevel = 70.0;
-input double oversoldLevel = 30.0;
+input double overboughtLevel = 75.0;
+input double oversoldLevel = 25.0;
 input double lotSize = 0.1;
 input double MaxRiskPercentage = 20.0; // Maximum percentage of balance to use
 input double closeInProfit = 1.00;
-input double closeInProfitSingleOrder = 5.00;
+// input 
+double closeInProfitSingleOrder = 5.00;
 
 #include <Trade\Trade.mqh>
 CTrade  trade;
 CPositionInfo  my_position;     // position info object
-uint start_now=0, last_start_now=0;
+uint start_now=0, last_start_now=0, timeCheckSinglePosition=0;
 // Indicator handles
 int macdHandle, rsiHandle;
 double maxRiskAmount;
@@ -38,8 +39,11 @@ int OnInit()
 //--- create timer
    EventSetTimer(60);
 // Initialize MACD and RSI indicator handles
-   macdHandle = iMACD(NULL, 0, fastEMA, slowEMA, signalSMA, PRICE_CLOSE);
-   rsiHandle = iRSI(NULL, 0, rsiPeriod, PRICE_CLOSE);
+
+//macdHandle = iMACD(NULL,PERIOD_M1, fastEMA, slowEMA, signalSMA, PRICE_CLOSE);
+// rsiHandle = iRSI(NULL, PERIOD_M1, rsiPeriod, PRICE_CLOSE);
+   macdHandle = iMACD(NULL,PERIOD_M5, fastEMA, slowEMA, signalSMA, PRICE_CLOSE);
+   rsiHandle = iRSI(NULL, PERIOD_M5, rsiPeriod, PRICE_CLOSE);
 //---
    maxRiskAmount = AccountInfoDouble(ACCOUNT_BALANCE) * (MaxRiskPercentage / 100.0);
    return(INIT_SUCCEEDED);
@@ -60,37 +64,39 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   CheckAndCloseProfitableOrders();
+
    double macdMain[], macdSignal[], rsiValue[];
+   double accountMargin = AccountInfoDouble(ACCOUNT_MARGIN);
+
    ArraySetAsSeries(macdMain, true);
    ArraySetAsSeries(macdSignal, true);
    ArraySetAsSeries(rsiValue, true);
-   double accountMargin = AccountInfoDouble(ACCOUNT_MARGIN);
+
 // Get the latest values of MACD and its signal line, and RSI
-   if(CopyBuffer(macdHandle, 0, 0, 1, macdMain) <= 0 || CopyBuffer(macdHandle, 1, 0, 1, macdSignal) <= 0 || CopyBuffer(rsiHandle, 0, 0, 1, rsiValue) <= 0)
+   if(CopyBuffer(macdHandle, 0, 0, 3, macdMain) <= 0 || CopyBuffer(macdHandle, 1, 0, 3, macdSignal) <= 0 || CopyBuffer(rsiHandle, 0, 0, 1, rsiValue) <= 0)
    {
       Print("Failed to get data");
       return; // Failed to get data
    }
 
-   
-   if(accountMargin < maxRiskAmount) // && (start_now - last_start_now) > 100 )
+  // Print("rsiValue[0] ", rsiValue[0] ,"  < oversoldLevel ", oversoldLevel, " && macdMain[0] ", macdMain[0], " > macdSignal[0] ",macdSignal[0]  );
+  // Print("rsiValue[0] ", rsiValue[0] ,"  > oversoldLevel ", oversoldLevel, " && macdMain[0] ", macdMain[0], " < macdSignal[0] ",macdSignal[0]  );
+   if(accountMargin < maxRiskAmount )//&& (start_now - last_start_now) > 100 )
    {
-      // Determine trade signal
-      //if(macdMain[0] > macdSignal[0] && rsiValue[0] < overboughtLevel && rsiValue[0] > oversoldLevel)
-      if( rsiValue[0] < oversoldLevel)
+      if( rsiValue[0] < oversoldLevel && macdMain[0] > macdSignal[0] )
       {
+
          OpenBuyOrder();
       }
-      // else if(macdMain[0] < macdSignal[0] && rsiValue[0] > oversoldLevel && rsiValue[0] < overboughtLevel)
-      else if( rsiValue[0] > overboughtLevel)
+      else if( rsiValue[0] > overboughtLevel && macdMain[0] < macdSignal[0])
       {
+
          OpenSellOrder();
       }
-      last_start_now = GetTickCount();
    }
-   start_now = GetTickCount();
-   CheckAndCloseProfitableOrders();
-   CheckAndCloseSingleProfitOrders();
+
+//  CheckAndCloseSingleProfitOrders();
 }
 
 //+------------------------------------------------------------------+
@@ -116,11 +122,11 @@ void OpenSellOrder()
 {
    if(trade.Sell(lotSize, _Symbol))
    {
-      Print("Buy order placed.");
+      Print("Sell order placed.");
    }
    else
    {
-      Print("Buy order failed: ", GetLastError());
+      Print("Sell order failed: ", GetLastError());
    }
 }
 
