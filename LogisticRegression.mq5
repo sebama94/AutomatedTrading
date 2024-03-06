@@ -16,7 +16,7 @@
 #include <Trade\PositionInfo.mqh> //Instatiate Library for Positions Information
 
 
-#define  TRAIN_BARS 1000 //The total number of bars we want to train our model
+#define  TRAIN_BARS 50000 //The total number of bars we want to train our model
 
 CTrade         trade;        // trading object
 CLogisticRegression Log_reg;
@@ -28,13 +28,17 @@ CPositionInfo  my_position;     // position info object
 COrderInfo     order;        // order info object
 //CArrayLong     arr_tickets;  // array tickets
 
-input double lotSize = 1.00;
+double lotSize = 0.1;
 input double MaxRiskPercentage = 20.0; // Maximum percentage of balance to use
-input double overboughtLevel = 65.0;
-input double oversoldLevel = 35.0;
-input double closeInProfit = 5.00;
-input int rsi_period = 13;
-
+//input
+double overboughtLevel = 70.0;
+//input
+double oversoldLevel = 30.0;
+//input
+double closeInProfit;
+//input
+int rsi_period = 13;
+bool timeOutExpired = true;
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -45,7 +49,6 @@ double maxRiskAmount;
 double rsi_buff[];
 vector rsi_buff_v(TRAIN_BARS);
 int rsi_handle=0,macdHandle=0;
-uint start_now=0, last_start_now=0;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -61,21 +64,20 @@ int OnInit()
 {
 //--- create timer
    EventSetTimer(60);
-//---
+//---Tra
 //-- collecting the data
 //time_start= GetTickCount();
 // last_time_start = time_start + 6000;
 // macdHandle = iMACD(Symbol(), 0, fastEMA, slowEMA, signalSMA, PRICE_CLOSE);
    rsi_handle = iRSI(Symbol(),PERIOD_M5,rsi_period,PRICE_CLOSE);
 //rsi_handle =macdHandle;
+
    CopyBuffer(rsi_handle,0,0,TRAIN_BARS,rsi_buff); //get rsi values
    rsi_buff_v = matrix_utils.ArrayToVector(rsi_buff); //store the rsi values to a vector
    xtrain.Col(rsi_buff_v,0); //store that vector into a first and only column in the x matrix
    vector y_close(TRAIN_BARS), y_open(TRAIN_BARS);
-   y_close.CopyRates(Symbol(),PERIOD_M5,COPY_RATES_CLOSE,0,TRAIN_BARS); //copy the closing prices into a y vector
-   y_open.CopyRates(Symbol(),PERIOD_M5,COPY_RATES_OPEN,0,TRAIN_BARS);
-   start_now = GetTickCount() + 6000;
-//putting labels for the target variable
+   y_close.CopyRates(Symbol(),PERIOD_M1,COPY_RATES_CLOSE,0,TRAIN_BARS); //copy the closing prices into a y vector
+   y_open.CopyRates(Symbol(),PERIOD_M1,COPY_RATES_OPEN,0,TRAIN_BARS);
 
    for(ulong i=0; i<TRAIN_BARS; i++)
    {
@@ -101,6 +103,7 @@ int OnInit()
    Print("Trained model Accuracy ",accuracy);
 //---
    maxRiskAmount = AccountInfoDouble(ACCOUNT_BALANCE) * (MaxRiskPercentage / 100.0);
+   closeInProfit = AccountInfoDouble(ACCOUNT_BALANCE) * 0.001;
    return(INIT_SUCCEEDED);
 
 }
@@ -137,30 +140,66 @@ void OnTick()
    pre_processing.fit_transform(xtrain);
 
    int signal = (int)Log_reg.predict(rsi_buff_v);
-   
+
 //predict the next price using the CURRENT/RECENT RSI INDICATOR READINGS/VALUE
 //double totalRisk = currentRiskAmount + newPositionRisk;
-   if(accountMargin < maxRiskAmount) //&& (start_now - last_start_now) > 1000)
+   if(accountMargin < maxRiskAmount && timeOutExpired ) //&& (start_now - last_start_now) > 1000)
    {
       // Print("signal  ", signal);
-      if(signal == 0 && rsi_buff[0] > 70)
+      if(signal != 0 && rsi_buff[0] > overboughtLevel)
       {
          //Print("Open a sell trade!");
          OpenSellOrder();
+
       }
       else
       {
-         if(rsi_buff[0] < 30 )
+         if(rsi_buff[0] < oversoldLevel )
          {
             //Print("Open a buy trade!");
             //Open a buy trade
             OpenBuyOrder();
+
          }
       }
-
+      timeOutExpired = false;
    }
+   CheckAndCloseSingleProfitOrders();
    CheckAndCloseProfitableOrders();
+   
+   
 
+
+}
+//+------------------------------------------------------------------+
+//| Profit all positions                                             |
+//+------------------------------------------------------------------+
+void CheckAndCloseSingleProfitOrders()
+{
+   double singleProfit = 0.0;
+   for(int i=PositionsTotal()-1; i >=0; i--)
+   {
+      if(my_position.SelectByIndex(i))
+      {
+         singleProfit=my_position.Commission()+my_position.Swap()+my_position.Profit();
+         if(singleProfit > closeInProfit)
+         {
+            if(my_position.SelectByIndex(i))
+            {
+               ulong ticket;
+               ticket = my_position.Ticket();
+               if(!trade.PositionClose(ticket))
+               {
+                  Print("Error closing sell order: ");
+               }
+               else
+               {
+                  Print("CloseSellOrder with ticket: ", ticket);
+               }
+            }
+         }
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -188,27 +227,6 @@ void CheckAndCloseProfitableOrders()
       double currentPrice = 0.0;
       double profit = 0.0;
 
-      // Check if it's a buy order
-      /*if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
-        {
-         currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID); // Current sell price
-         profit = currentPrice - openPrice; // Profitable if current price is higher than open price
-
-        }
-      // Check if it's a sell order
-      else
-        {
-         if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
-           {
-            currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_ASK); // Current buy price
-            profit =  openPrice - currentPrice; // Profitable if open price is higher than current price
-           }
-        }*/
-
-      // If the position is profitable, then close it
-      //double PositionProfit=NormalizeDouble(PositionGetDouble(POSITION_PROFIT),_Digits);
-      //ProfitAllPositions();
-      // Print("Profit: ", ProfitAllPositions(), "> close in profit: ", closeInProfit );
       if(ProfitAllPositions() > closeInProfit)
       {
 
@@ -237,7 +255,8 @@ void CheckAndCloseProfitableOrders()
 void OnTimer()
 {
 //---
-
+   Print("Running...");
+   timeOutExpired = true;
 }
 //+------------------------------------------------------------------+
 //| Trade function                                                   |
@@ -436,28 +455,11 @@ void OpenSellOrder()
 //+------------------------------------------------------------------+
 void CloseBuyPosition()
 {
-
-// Scan for the first buy order and close it
-//for(int i=OrdersTotal()-1; i>=0; i--)
    for(int i=PositionsTotal()-1; i >= 0; i--)
    {
       if(my_position.SelectByIndex(i) && PositionGetInteger(POSITION_TYPE) == ORDER_TYPE_BUY && PositionGetString(POSITION_SYMBOL) == Symbol())
       {
          ulong ticket = my_position.Ticket();
-         //Print("Print order total: ", ticket);
-         // Prepare request to close buy order
-         /*    MqlTradeRequest request;
-             MqlTradeResult result;
-             request.action = TRADE_ACTION_DEAL;
-             request.symbol = Symbol();
-             request.volume = lotSize;
-             request.type = ORDER_TYPE_SELL;
-             request.price = SymbolInfoDouble(Symbol(), SYMBOL_BID); // Use current Bid price for selling
-             request.position = ticket; // Ticket of the buy order to close
-             request.deviation = 20;
-             request.magic = 0;
-             request.comment = "Buy order closed";
-         */
          if(!trade.PositionClose(ticket))
          {
             Print("Error closing buy order: ");
@@ -476,32 +478,13 @@ void CloseBuyPosition()
 //+------------------------------------------------------------------+
 void CloseSellPosition()
 {
-// Scan for the first sell order and close it
-
-// for(int i=OrdersTotal()-1; i>=0; i--)
-
    for(int i=PositionsTotal()-1; i >= 0; i--)
    {
       if(my_position.SelectByIndex(i) && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL &&  PositionGetString(POSITION_SYMBOL) == Symbol())
       {
-         // Print("Close Sell Position - Position Ticket index: ", my_position.Ticket());
          ulong ticket;
          ticket = my_position.Ticket();
-         // ticket = OrderGetTicket(i);
-         //Print("Print order total: ", ticket);
-         // Prepare request to close sell order
-         /*  MqlTradeRequest request;
-           MqlTradeResult result;
-           request.action = TRADE_ACTION_DEAL;
-           request.symbol = Symbol();
-           request.volume = lotSize;
-           request.type = ORDER_TYPE_BUY;
-           request.price = SymbolInfoDouble(Symbol(), SYMBOL_ASK); // Use current Ask price for buying
-           request.position = ticket; // Ticket of the sell order to close
-           request.deviation = 20;
-           request.magic = 0;
-           request.comment = "Sell order closed";
-         */
+
          if(!trade.PositionClose(ticket)) // OrderSend(request, result))
             Print("Error closing sell order: ");
          else
@@ -512,3 +495,4 @@ void CloseSellPosition()
       }
    }
 }
+//+------------------------------------------------------------------+
