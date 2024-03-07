@@ -6,7 +6,7 @@
 #property copyright "Copyright 2022, MetaQuotes Ltd."
 #property link      "https://www.mql5.com"
 
-//#ifdef __MultiCurrency__
+#ifndef   __MultiCurrency__
 #define  __MultiCurrency__
 
 //+------------------------------------------------------------------+
@@ -43,14 +43,18 @@
 class MultiCurrency
 {
 public:
-                     MultiCurrency(const string& symbolName
-                 , const int rsi_period
-                 , const int trainBars );
+                     MultiCurrency();
                     ~MultiCurrency();
 
-protected:
-   void              Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit,bool timeOutExpired);
-   bool              trainModel();
+
+   void              Init(const string& symbolName, const int rsi_period, const int trainBars );
+   void              Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit);
+      bool              TrainModel();
+      
+private:
+
+
+
    bool              checkAndCloseSingleProfitOrders();
    bool              checkAndCloseProfitableOrders();
    double            profitAllPositions();
@@ -63,19 +67,18 @@ protected:
    int               openPos();
 
 
-private:
+protected:
+
    int               _rsiHandler;
    ENUM_TIMEFRAMES   _enumTimeFrames;
-   const uint        _trainBars;
+   uint              _trainBars;
    bool              _timeOutExpired;
    matrix            _xTrain; //1000 rows 1 column matrix
    vector            _yTrain;   //1000 size vector
-   const double            _maxRiskAmount;
-
-
+   double            _maxRiskAmount;
    string            _symbolName;
-   const double       _lotSize;
-   const double      _maxRiskPercentage; // Maximum percentage of balance to use
+   const double      _lotSize;
+   double            _maxRiskPercentage; // Maximum percentage of balance to use
    double            _overboughtLevel;
    double            _oversoldLevel;
    double            _closeInProfit;
@@ -86,7 +89,7 @@ private:
    StandardizationScaler _preProcessing;
    CPositionInfo     _myPositionInfo;
    COrderInfo        _orderInfo;
-   const double      _accountMargin;
+   double            _accountMargin;
    int               _rsiPeriod;
 
 };
@@ -94,19 +97,18 @@ private:
 //+------------------------------------------------------------------+
 //|
 //+------------------------------------------------------------------+
-
+MultiCurrency::MultiCurrency() {};
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-MultiCurrency::MultiCurrency(const string& symbolName
-                             , const int rsi_period
-                             , const int trainBars )
+void MultiCurrency::Init(const string& symbolName
+                         , const int rsi_period
+                         , const int trainBars )
 {
    _rsiPeriod = rsi_period;
    _symbolName = symbolName;
-   _xTrain(_trainBars, 1);
-   _yTrain(_trainBars);
-   _rsi_handle = iRSI(_symbolName,PERIOD_M5,rsi_period,PRICE_CLOSE);
+   _trainBars = trainBars;
+   _rsiHandler = iRSI(_symbolName,PERIOD_M5,_rsiPeriod,PRICE_CLOSE);
    _timeOutExpired=_timeOutExpired;
 
 }
@@ -122,70 +124,70 @@ MultiCurrency::~MultiCurrency()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool MultiCurrency::trainModel()
+bool MultiCurrency::TrainModel()
 {
    vector y_close(_trainBars), y_open(_trainBars);
-   Log_reg = CLogisticRegression();
+   LogReg = CLogisticRegression();
    vector train_pred;
    vector classes = {0,1};
    double accuracy;
    double            rsiBuff[];
    vector            rsiBuffVec;
-   CopyBuffer(_rsi_handle,0,0,_trainBars,rsiBuff);
-   rsiBuffVec = matrix_utils.ArrayToVector(rsiBuff);
-   _xtrain.Col(_rsi_buff_v,0);
+   CopyBuffer(_rsiHandler,0,0,_trainBars,rsiBuff);
+   rsiBuffVec = _matrixUtils.ArrayToVector(rsiBuff);
+   _xTrain.Col(rsiBuffVec,0);
    y_close.CopyRates(_symbolName,PERIOD_M1,COPY_RATES_CLOSE,0,_trainBars);
    y_open.CopyRates(_symbolName,PERIOD_M1,COPY_RATES_OPEN,0,_trainBars);
    for(ulong i=0; i<_trainBars; i++)
    {
       if(y_close[i] > y_open[i])  //bullish = 1
-         _ytrain[i] = 1;
+         _yTrain[i] = 1;
       else
-         _ytrain[i] = 0;         // bears = 0
+         _yTrain[i] = 0;         // bears = 0
    }
-   Comment("Corr Coeff---> ", _rsi_buff_v.CorrCoef(y_close));
-   Log_reg.fit(xtrain,ytrain);
-   train_pred = Log_reg.predict(xtrain);
-   accuracy = metrics.accuracy_score(ytrain,train_pred);
+   Comment("Corr Coeff---> ", rsiBuffVec.CorrCoef(y_close));
+   LogReg.fit(_xTrain,_yTrain);
+   train_pred = LogReg.predict(_xTrain);
+   accuracy = _metrics.accuracy_score(_yTrain,train_pred);
    Print("Trained model Accuracy ",accuracy);
+   return true;
 }
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void MultiCurrency::Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit,bool timeOutExpired)
+void MultiCurrency::Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit)
 {
    _accountMargin = accountMargin;
    _maxRiskAmount = maxRiskAmount;
    _closeInProfit = closeInProfit;
-   _timeOutExpired = timeOutExpired;
 
    double            rsiBuff[];
-
+   vector rsiBuffVec(_trainBars);
    ArraySetAsSeries(rsiBuff,true);
-   CopyBuffer(_rsiHandle,0,0,1,rsiBuff);
-   rsiBuffVec = matrix_utils.ArrayToVector(rsiBuff);
+   CopyBuffer(_rsiHandler,0,0,1,rsiBuff);
+   rsiBuffVec = _matrixUtils.ArrayToVector(rsiBuff);
    _xTrain.Row(rsiBuffVec,0);
-   preProcessing.fit_transform(xtrain);
-   int signal = (int)Log_reg.predict(rsiBuffVec);
+   _preProcessing.fit_transform(_xTrain);
+   int signal = (int)LogReg.predict(rsiBuffVec);
 
    if(_accountMargin < _maxRiskAmount && _timeOutExpired )
    {
-      if(signal != 0 && rsiBuff[0] > _overboughtLevel)
+      if(signal != 0 && rsiBuffVec[0] > _overboughtLevel)
       {
-         OpenSellOrder();
+         openSellOrder();
       }
       else
       {
-         if(rsi_buff[0] < _oversoldLevel )
+         if(rsiBuffVec[0] < _oversoldLevel )
          {
-            OpenBuyOrder();
+            openBuyOrder();
          }
       }
       _timeOutExpired = false;
    }
-   CheckAndCloseSingleProfitOrders();
-   CheckAndCloseProfitableOrders();
+   checkAndCloseSingleProfitOrders();
+   checkAndCloseProfitableOrders();
 
 }
 
@@ -201,7 +203,7 @@ bool MultiCurrency::checkAndCloseSingleProfitOrders()
       if(_myPositionInfo.SelectByIndex(i))
       {
          singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-         if(singleProfit > closeInProfit)
+         if(singleProfit > _closeInProfit)
          {
             if(_myPositionInfo.SelectByIndex(i))
             {
@@ -250,19 +252,21 @@ bool MultiCurrency::checkAndCloseProfitableOrders()
       double currentPrice = 0.0;
       double profit = 0.0;
 
-      if(ProfitAllPositions() > closeInProfit)
+      if(profitAllPositions() > _closeInProfit)
       {
 
          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
          {
-            CloseSellPosition();
+            closeSellPosition();
          }
          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
          {
-            CloseBuyPosition();
+            closeBuyPosition();
          }
+         return true;
       }
    }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -295,7 +299,7 @@ double MultiCurrency::calculateCurrentRisk()
    Print("OrdersTotal: ", OrdersTotal());
 
 // Example: Sum of margins for all open positions
-   for(int i = 0; i < OpenPos(); i++)
+   for(int i = 0; i < openPos(); i++)
    {
       if(OrderGetTicket(i)>0 && OrderGetString(ORDER_SYMBOL) == _symbolName)
       {
@@ -390,5 +394,5 @@ void MultiCurrency::closeSellPosition()
    }
 }
 
-//#endif
+#endif
 //+------------------------------------------------------------------+
