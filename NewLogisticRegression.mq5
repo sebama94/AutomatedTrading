@@ -10,23 +10,39 @@
 
 #include "MultiCurrency.mqh"
 
-#define  TRAIN_BARS 1
+#define  TRAIN_BARS 5
 
-input double MaxRiskPercentage = 30; // Max Risk in Percentage [%]]
+double MaxRiskPercentage = 20; // Max Risk in Percentage [%]]
 const int GlobalRsiPeriod = 14;
-MultiCurrency usdCurrency;
+MultiCurrency eurUsdCurrency;
+MultiCurrency gbpUsdCurrency;
 bool GlobaltimeOutExpired = true;
-input double GlobalLotSize = 0.1;
-input double GlobaloversoldLevel = 30;
-input double GlobaloverboughtLevel =70;
+double GlobalLotSize = 0.1;
+
+double GlobaloversoldLevel = 29;
+double GlobaloverboughtLevel = 71;
+
+const int GlobalBBPeriod = 20;
+const double GlobalBBDeviation = 2;
+const int GlobalBBShift = 0;
+/*
+void MultiCurrency::Init(const string& symbolName
+                         , const int bbPeriod
+                         , const double bbDeviation
+                         , const int bbBandShift
+                         , const int rsiPeriod
+                         , const int trainBars
+                         , const double overboughtLevel
+                         , const double oversoldLevel
+                         , const double lotSize )
+*/
 
 int OnInit()
 {
    EventSetTimer(7200); 
 
-   usdCurrency.Init(Symbol(),GlobalRsiPeriod, TRAIN_BARS, GlobaloverboughtLevel, GlobaloversoldLevel, GlobalLotSize);
-   usdCurrency.TrainModel();
-
+   eurUsdCurrency.Init(Symbol(),GlobalBBPeriod,GlobalBBDeviation,GlobalBBShift,GlobalRsiPeriod, TRAIN_BARS, GlobaloverboughtLevel, GlobaloversoldLevel, GlobalLotSize);
+   eurUsdCurrency.TrainModel();
    return(INIT_SUCCEEDED);
 
 }
@@ -46,14 +62,14 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+
    double accountMargin = AccountInfoDouble(ACCOUNT_MARGIN);
    double maxRiskAmount = AccountInfoDouble(ACCOUNT_BALANCE) * (MaxRiskPercentage / 100.0);
    double closeInProfit = AccountInfoDouble(ACCOUNT_BALANCE) * 0.01;
    //Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit,bool timeOutExpired)
 
-   usdCurrency.Run(accountMargin, maxRiskAmount, closeInProfit, GlobaltimeOutExpired);
+   eurUsdCurrency.Run(accountMargin, maxRiskAmount, closeInProfit, GlobaltimeOutExpired);
    GlobaltimeOutExpired = false;
-   
 }
 
 
