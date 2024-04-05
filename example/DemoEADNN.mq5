@@ -12,7 +12,7 @@
 //+------------------------------------------------------------------+
 #include <Trade\Trade.mqh>        //include the library for execution of trades
 #include <Trade\PositionInfo.mqh> //include the library for obtaining information on positions
-#include <DeepNeuralNetwork.mqh> 
+#include <..\Experts\AutomatedTrading\example\DeepNeuralNetwork.mqh> 
 
 int numInput=4;
 int numHiddenA = 4;
