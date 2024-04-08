@@ -37,7 +37,7 @@ private:
 
 public:
 
-                     DeepNeuralNetwork(int _numInput,int _numHiddenA,int _numHiddenB,int _numOutput)
+     DeepNeuralNetwork(int _numInput,int _numHiddenA,int _numHiddenB,int _numOutput)
      {
 
       this.numInput=_numInput;
