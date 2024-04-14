@@ -6,10 +6,10 @@
 #property copyright "Copyright 2018, MetaQuotes Software Corp."
 #property link      "https://www.mql5.com"
 
-#define SIZEI 10
-#define SIZEA 8
-#define SIZEB 5
-#define SIZEC 3  // New layer size
+#define SIZEA 5
+#define SIZEB 8
+#define SIZEC 1
+#define SIZEO 1  // New layer size
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -26,10 +26,10 @@ private:
 
    double            inputs[];
 
-   double            iaWeights[][SIZEI];
-   double            abWeights[][SIZEA];
-   double            bcWeights[][SIZEB];  // Weights for new layer
-   double            coWeights[][SIZEC];  // Weights for new layer to output
+   double            iaWeights[][SIZEA];
+   double            abWeights[][SIZEB];
+   double            bcWeights[][SIZEC];  // Weights for new layer
+   double            coWeights[][SIZEO];  // Weights for new layer to output
 
    double            aBiases[];
    double            bBiases[];
@@ -42,8 +42,8 @@ private:
    double            outputs[];
 
 public:
-
-                     DeepNeuralNetwork(int _numInput, int _numHiddenA, int _numHiddenB, int _numHiddenC, int _numOutput)
+DeepNeuralNetwork(){};
+void Init(int _numInput, int _numHiddenA, int _numHiddenB, int _numHiddenC, int _numOutput)
    {
       this.numInput = _numInput;
       this.numHiddenA = _numHiddenA;
