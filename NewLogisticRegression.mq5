@@ -10,11 +10,7 @@
 
 #include "MultiCurrency.mqh"
 
-int numInput=20;
-int numHiddenA = 5;
-int numHiddenB = 8;
-int numHiddenC = 1;
-int numOutput=1;
+
 
 input double w0   = 1.0;
 input double w1   = 1.0;
@@ -207,12 +203,13 @@ input double b13  = 1.0;
 
 input double w148 = 1.0;
 input double w149 = 1.0;
+input double w150 = 1.0;
 
 input double b14  = 1.0;
 input double b15  = 1.0;
-
+input double b16  = 1.0;
 /*
-input double w150 = 1.0;
+
 input double w151 = 1.0;
 input double w152 = 1.0;
 input double w153 = 1.0;
@@ -317,7 +314,7 @@ double weight[] = {w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15,w16,w17
                    w32,w33,w34,w35,w36,w37,w38,w39, w40,w41,w42,w43,w44,w45,w46,w47,w48,w49,w50,w51,w52,w53,w54,w55,w56,w57,w58,w59,
                    w60,w61,w62,w63,w64,w65,w66,w67,w68,w69,w70,w71,w72,w73,w74,w75,w76,w77,w78,w79,w80,w81,w82,w83,w84,w85,w86,w87,w88,w89,w90,w91,w92,w93,w94,w95,w96,w97,
                    w98,w99, b0,b1,b2,b3,b4,w100,w101,w102,w103,w104,w105,w106,w107,w108,w109,w110,w111,w112,w113,w114,w115,w116,w117,w118,w119 /*b13,b14,b15,b16,b17*/,w120,w121,w122,w123,w124,w125,w126,w127,
-                   w128,w129,w130,w131,w132,w133,w134,w135,w136,w137,w138,w139, b5, b6, b7,b8,b9, b10,b11,b12, w140, w141,w142,w143,w144,w145,w146,w147, b13, w148 /*w149*/, b14, /* b15 /*  w150,w151,w152,w153,w154,w155,w156,w157,w158,w159, /* w160,w161,w162,w163,w164,w165,
+                   w128,w129,w130,w131,w132,w133,w134,w135,w136,w137,w138,w139, b5, b6, b7,b8,b9, b10,b11,b12, w140, w141,w142,w143,w144,w145,w146,w147, b13, w148 ,w149, w150, b14, b15, b16/*  w150,w151,w152,w153,w154,w155,w156,w157,w158,w159, /* w160,w161,w162,w163,w164,w165,
 w166,w167,w168,w169,w170,w171,w172,w173,w174,w175,w176,w177,w178,w179,w180,w181,w182,w183,w184,w185,w186,w187,w188,w189,w190,w191,w192,w193,w194,w195,w196,w197,w198,w199, b20,b21,b22,b23,
                    b24,/*b25 ,b26 ,b27 ,b28 ,b29,  w200,w201,w202,w203,w204,w205,w206,w207,w208,w209,w210,w211,w212,w213,w214, w215,w216,w217,w218,w219,w220,w221,w222,w223,w224,w225,w226,w227,w228,w229,b30,b31,b32
                  */
@@ -350,7 +347,12 @@ void MultiCurrency::Init(const string& symbolName
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   EventSetTimer(7200);
+   EventSetTimer(60);
+   int numInput=20;
+   int numHiddenA = 5;
+   int numHiddenB = 8;
+   int numHiddenC = 1;
+   int numOutput=3;
 
    eurUsdCurrency.Init(Symbol(),GlobalRsiPeriod,
                        GlobaloverboughtLevel, GlobaloversoldLevel, GlobalLotSize, numInput,

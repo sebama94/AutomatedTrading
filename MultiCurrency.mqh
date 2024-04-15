@@ -175,6 +175,7 @@ void MultiCurrency::Run(const double& accountMargin
    {
       _timeOutExpiredOpenSell= true;
       _timeOutExpiredOpenBuy = true;
+      
    }
    _accountMargin = accountMargin;
    _maxRiskAmount = maxRiskAmount;
@@ -212,7 +213,7 @@ void MultiCurrency::Run(const double& accountMargin
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
 
-   Print("yValues[0]: ", yValues[0]);
+  // Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1], " yValues[2]: ", yValues[2]);
 
 //define Ask, Bid
    double Ask = NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
@@ -220,26 +221,23 @@ void MultiCurrency::Run(const double& accountMargin
 
    if(_accountMargin < _maxRiskAmount )
    {
-      if(_timeOutExpiredOpenSell && yValues[0] >= 0 && rsiBuffM5[0] > _overboughtLevel
-        )
+      if(_timeOutExpiredOpenSell && yValues[0] > 0.6 && rsiBuffM5[0] > _overboughtLevel)
       {
          openSellOrder();
          _timeOutExpiredOpenSell = false;
       }
-      else
+         
+      if( _timeOutExpiredOpenBuy && yValues[1] > 0.6 && rsiBuffM5[0] < _oversoldLevel)
       {
-         if( _timeOutExpiredOpenBuy && yValues[0] < 0 && rsiBuffM5[0] < _oversoldLevel)
-         {
             openBuyOrder();
             _timeOutExpiredOpenBuy = false;
-         }
       }
    }
 
-   /*   if(timeOutExpired)
-     {
-        checkAndCloseSingleProfitOrders();
-     }*/
+  if(timeOutExpired && yValues[2] > 0.6 )
+  {
+       checkAndCloseSingleProfitOrders();
+  }
 // checkAndCloseProfitableOrders();
 
 }
@@ -307,7 +305,8 @@ bool MultiCurrency::checkAndCloseProfitableOrders()
       double currentPrice = 0.0;
       double profit = 0.0;
 
-      if(profitAllPositions() > _closeInProfit)
+      //if(profitAllPositions() > _closeInProfit)
+      
       {
          Print("Garabage collector active!");
          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
@@ -375,8 +374,8 @@ bool MultiCurrency::openBuyOrder()
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
 
-   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-1000*_Point),(Bid+150* _Point))) //,NULL))
-//   if(_trade.Buy(_lotSize, _symbolName,Ask,0,(Ask+150 * _Point),NULL))
+   //if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-1000*_Point),(Bid+300* _Point))) //,NULL))
+   if(_trade.Buy(_lotSize, _symbolName,Ask,0,(Ask+300 * _Point)))
    {
       Print("Buy order placed.");
       return true;
@@ -397,8 +396,8 @@ bool MultiCurrency::openSellOrder()
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
 
-   if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+1000*_Point),(Ask-150* _Point)))//,NULL))
-      //if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-150 * _Point),NULL))
+   // if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+1000*_Point),(Ask-300* _Point)))//,NULL))
+   if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-300 * _Point)))
    {
       Print("Sell order placed.");
       return true;

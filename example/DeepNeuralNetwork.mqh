@@ -9,7 +9,7 @@
 #define SIZEA 5
 #define SIZEB 8
 #define SIZEC 1
-#define SIZEO 1  // New layer size
+#define SIZEO 3  // New layer size
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -177,17 +177,18 @@ void Init(int _numInput, int _numHiddenA, int _numHiddenB, int _numHiddenC, int 
       ArrayCopy(outputs, softOut);
 
       ArrayCopy(yValues, outputs);
+
    }
 
 
-   double            HyperTanFunction(double x)
+   double HyperTanFunction(double x)
    {
       if(x<-20.0) return -1.0; // approximation is correct to 30 decimals
       else if(x > 20.0) return 1.0;
       else return (1-exp(-2*x))/(1+exp(-2*x));//MathTanh(x);
    }
 
-   void              Softmax(double &oSums[],double &_softOut[])
+   void Softmax(double &oSums[],double &_softOut[])
    {
       // determine max output sum
       // does all output nodes at once so scale doesn't have to be re-computed each time
