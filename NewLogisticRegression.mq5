@@ -11,7 +11,7 @@
 #include "MultiCurrency.mqh"
 
 
-
+/* 10 * 20 = 200*/
 input double w0   = 1.0;
 input double w1   = 1.0;
 input double w2   = 1.0;
@@ -52,20 +52,6 @@ input double w36  = 1.0;
 input double w37  = 1.0;
 input double w38  = 1.0;
 input double w39  = 1.0;
-
-/*
-input double b0   = 1.0;
-input double b1   = 1.0;
-input double b2   = 1.0;
-input double b3   = 1.0;
-input double b4   = 1.0;
-/*
-input double b5   = 1.0;
-input double b6   = 1.0;
-input double b7   = 1.0;
-input double b8   = 1.0;
-input double b9   = 1.0;
-*/
 input double w40  = 1.0;
 input double w41  = 1.0;
 input double w42  = 1.0;
@@ -126,13 +112,6 @@ input double w96  = 1.0;
 input double w97  = 1.0;
 input double w98  = 1.0;
 input double w99  = 1.0;
-
-input double b0   = 1.0;
-input double b1   = 1.0;
-input double b2   = 1.0;
-input double b3   = 1.0;
-input double b4   = 1.0;
-
 input double w100 = 1.0;
 input double w101 = 1.0;
 input double w102 = 1.0;
@@ -173,23 +152,6 @@ input double w136 = 1.0;
 input double w137 = 1.0;
 input double w138 = 1.0;
 input double w139 = 1.0;
-
-input double b5   = 1.0;
-input double b6   = 1.0;
-input double b7   = 1.0;
-input double b8   = 1.0;
-input double b9   = 1.0;
-input double b10  = 1.0;
-input double b11  = 1.0;
-input double b12  = 1.0;
-
-/*
-
-
-input double b16  = 1.0;
-input double b17  = 1.0;
-*/
-
 input double w140 = 1.0;
 input double w141 = 1.0;
 input double w142 = 1.0;
@@ -198,18 +160,9 @@ input double w144 = 1.0;
 input double w145 = 1.0;
 input double w146 = 1.0;
 input double w147 = 1.0;
-
-input double b13  = 1.0;
-
 input double w148 = 1.0;
 input double w149 = 1.0;
 input double w150 = 1.0;
-
-input double b14  = 1.0;
-input double b15  = 1.0;
-input double b16  = 1.0;
-/*
-
 input double w151 = 1.0;
 input double w152 = 1.0;
 input double w153 = 1.0;
@@ -219,8 +172,6 @@ input double w156 = 1.0;
 input double w157 = 1.0;
 input double w158 = 1.0;
 input double w159 = 1.0;
-
-/*
 input double w160 = 1.0;
 input double w161 = 1.0;
 input double w162 = 1.0;
@@ -260,18 +211,30 @@ input double w195 = 1.0;
 input double w196 = 1.0;
 input double w197 = 1.0;
 input double w198 = 1.0;
-input double w199 = 1.0;
-input double b20  = 1.0;
-input double b21  = 1.0;
-input double b22  = 1.0;
-input double b23  = 1.0;
-input double b24  = 1.0;
-input double b25  = 1.0;
-input double b26  = 1.0;
-input double b27  = 1.0;
-input double b28  = 1.0;
-input double b29  = 1.0;
+input double w199 = 1.0;  
+/* 20 Bias */
+input double b0   = 1.0;
+input double b1   = 1.0;
+input double b2   = 1.0;
+input double b3   = 1.0;
+input double b4   = 1.0;
+input double b5   = 1.0;
+input double b6   = 1.0;
+input double b7   = 1.0;
+input double b8   = 1.0;
+input double b9   = 1.0;
+input double b10  = 1.0;
+input double b11  = 1.0;
+input double b12  = 1.0;
+input double b13  = 1.0;
+input double b14  = 1.0;
+input double b15  = 1.0;
+input double b16  = 1.0;
+input double b17  = 1.0;
+input double b18  = 1.0;
+input double b19  = 1.0;
 
+/* 20 * 10 = 200 */
 input double w200 = 1.0;
 input double w201 = 1.0;
 input double w202 = 1.0;
@@ -287,7 +250,6 @@ input double w211 = 1.0;
 input double w212 = 1.0;
 input double w213 = 1.0;
 input double w214 = 1.0;
-
 input double w215 = 1.0;
 input double w216 = 1.0;
 input double w217 = 1.0;
@@ -303,21 +265,320 @@ input double w226 = 1.0;
 input double w227 = 1.0;
 input double w228 = 1.0;
 input double w229 = 1.0;
+input double w230 = 1.0;
+input double w231 = 1.0;
+input double w232 = 1.0;
+input double w233 = 1.0;
+input double w234 = 1.0;
+input double w235 = 1.0;
+input double w236 = 1.0;
+input double w237 = 1.0;
+input double w238 = 1.0;
+input double w239 = 1.0;
+input double w240 = 1.0;
+input double w241 = 1.0;
+input double w242 = 1.0;
+input double w243 = 1.0;
+input double w244 = 1.0;
+input double w245 = 1.0;
+input double w246 = 1.0;
+input double w247 = 1.0;
+input double w248 = 1.0;
+input double w249 = 1.0;
+input double w250 = 1.0;
+input double w251 = 1.0;
+input double w252 = 1.0;
+input double w253 = 1.0;
+input double w254 = 1.0;
+input double w255 = 1.0;
+input double w256 = 1.0;
+input double w257 = 1.0;
+input double w258 = 1.0;
+input double w259 = 1.0;
+input double w260 = 1.0;
+input double w261 = 1.0;
+input double w262 = 1.0;
+input double w263 = 1.0;
+input double w264 = 1.0;
+input double w265 = 1.0;
+input double w266 = 1.0;
+input double w267 = 1.0;
+input double w268 = 1.0;
+input double w269 = 1.0;
+input double w270 = 1.0;
+input double w271 = 1.0;
+input double w272 = 1.0;
+input double w273 = 1.0;
+input double w274 = 1.0;
+input double w275 = 1.0;
+input double w276 = 1.0;
+input double w277 = 1.0;
+input double w278 = 1.0;
+input double w279 = 1.0;
+input double w280 = 1.0;
+input double w281 = 1.0;
+input double w282 = 1.0;
+input double w283 = 1.0;
+input double w284 = 1.0;
+input double w285 = 1.0;
+input double w286 = 1.0;
+input double w287 = 1.0;
+input double w288 = 1.0;
+input double w289 = 1.0;
+input double w290 = 1.0;
+input double w291 = 1.0;
+input double w292 = 1.0;
+input double w293 = 1.0;
+input double w294 = 1.0;
+input double w295 = 1.0;
+input double w296 = 1.0;
+input double w297 = 1.0;
+input double w298 = 1.0;
+input double w299 = 1.0;
+input double w300 = 1.0;
+input double w301 = 1.0;
+input double w302 = 1.0;
+input double w303 = 1.0;
+input double w304 = 1.0;
+input double w305 = 1.0;
+input double w306 = 1.0;
+input double w307 = 1.0;
+input double w308 = 1.0;
+input double w309 = 1.0;
+input double w310 = 1.0;
+input double w311 = 1.0;
+input double w312 = 1.0;
+input double w313 = 1.0;
+input double w314 = 1.0;
+input double w315 = 1.0;
+input double w316 = 1.0;
+input double w317 = 1.0;
+input double w318 = 1.0;
+input double w319 = 1.0;
+input double w320 = 1.0;
+input double w321 = 1.0;
+input double w322 = 1.0;
+input double w323 = 1.0;
+input double w324 = 1.0;
+input double w325 = 1.0;
+input double w326 = 1.0;
+input double w327 = 1.0;
+input double w328 = 1.0;
+input double w329 = 1.0;
+input double w330 = 1.0;
+input double w331 = 1.0;
+input double w332 = 1.0;
+input double w333 = 1.0;
+input double w334 = 1.0;
+input double w335 = 1.0;
+input double w336 = 1.0;
+input double w337 = 1.0;
+input double w338 = 1.0;
+input double w339 = 1.0;
+input double w340 = 1.0;
+input double w341 = 1.0;
+input double w342 = 1.0;
+input double w343 = 1.0;
+input double w344 = 1.0;
+input double w345 = 1.0;
+input double w346 = 1.0;
+input double w347 = 1.0;
+input double w348 = 1.0;
+input double w349 = 1.0;
+input double w350 = 1.0;
+input double w351 = 1.0;
+input double w352 = 1.0;
+input double w353 = 1.0;
+input double w354 = 1.0;
+input double w355 = 1.0;
+input double w356 = 1.0;
+input double w357 = 1.0;
+input double w358 = 1.0;
+input double w359 = 1.0;
+input double w360 = 1.0;
+input double w361 = 1.0;
+input double w362 = 1.0;
+input double w363 = 1.0;
+input double w364 = 1.0;
+input double w365 = 1.0;
+input double w366 = 1.0;
+input double w367 = 1.0;
+input double w368 = 1.0;
+input double w369 = 1.0;
+input double w370 = 1.0;
+input double w371 = 1.0;
+input double w372 = 1.0;
+input double w373 = 1.0;
+input double w374 = 1.0;
+input double w375 = 1.0;
+input double w376 = 1.0;
+input double w377 = 1.0;
+input double w378 = 1.0;
+input double w379 = 1.0;
+input double w380 = 1.0;
+input double w381 = 1.0;
+input double w382 = 1.0;
+input double w383 = 1.0;
+input double w384 = 1.0;
+input double w385 = 1.0;
+input double w386 = 1.0;
+input double w387 = 1.0;
+input double w388 = 1.0;
+input double w389 = 1.0;
+input double w390 = 1.0;
+input double w391 = 1.0;
+input double w392 = 1.0;
+input double w393 = 1.0;
+input double w394 = 1.0;
+input double w395 = 1.0;
+input double w396 = 1.0;
+input double w397 = 1.0;
+input double w398 = 1.0;
+input double w399 = 1.0;
+/* bias 10 */
+input double b20  = 1.0;
+input double b21  = 1.0;
+input double b22  = 1.0;
+input double b23  = 1.0;
+input double b24  = 1.0;
+input double b25  = 1.0;
+input double b26  = 1.0;
+input double b27  = 1.0;
+input double b28  = 1.0;
+input double b29  = 1.0;
 
+/* 10 * 5 = 50 */
+input double w400 = 1.0;
+input double w401 = 1.0;
+input double w402 = 1.0;
+input double w403 = 1.0;
+input double w404 = 1.0;
+input double w405 = 1.0;
+input double w406 = 1.0;
+input double w407 = 1.0;
+input double w408 = 1.0;
+input double w409 = 1.0;
+input double w410 = 1.0;
+input double w411 = 1.0;
+input double w412 = 1.0;
+input double w413 = 1.0;
+input double w414 = 1.0;
+input double w415 = 1.0;
+input double w416 = 1.0;
+input double w417 = 1.0;
+input double w418 = 1.0;
+input double w419 = 1.0;
+input double w420 = 1.0;
+input double w421 = 1.0;
+input double w422 = 1.0;
+input double w423 = 1.0;
+input double w424 = 1.0;
+input double w425 = 1.0;
+input double w426 = 1.0;
+input double w427 = 1.0;
+input double w428 = 1.0;
+input double w429 = 1.0;
+input double w430 = 1.0;
+input double w431 = 1.0;
+input double w432 = 1.0;
+input double w433 = 1.0;
+input double w434 = 1.0;
+input double w435 = 1.0;
+input double w436 = 1.0;
+input double w437 = 1.0;
+input double w438 = 1.0;
+input double w439 = 1.0;
+input double w440 = 1.0;
+input double w441 = 1.0;
+input double w442 = 1.0;
+input double w443 = 1.0;
+input double w444 = 1.0;
+input double w445 = 1.0;
+input double w446 = 1.0;
+input double w447 = 1.0;
+input double w448 = 1.0;
+input double w449 = 1.0;
+/* bias 5 */
 input double b30  = 1.0;
 input double b31  = 1.0;
 input double b32  = 1.0;
+input double b33  = 1.0;
+input double b34  = 1.0;
 
-*/
+/* 5 * 2 = 10*/
+input double w450 = 1.0;
+input double w451 = 1.0;
+input double w452 = 1.0;
+input double w453 = 1.0;
+input double w454 = 1.0;
+input double w455 = 1.0;
+input double w456 = 1.0;
+input double w457 = 1.0;
+input double w458 = 1.0;
+input double w459 = 1.0;
+/* bias 2 */
+input double b35  = 1.0;
+input double b36  = 1.0;
 
-double weight[] = {w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15,w16,w17,w18,w19, w20,w21,w22,w23,w24,w25,w26,w27,w28,w29,w30,w31,
-                   w32,w33,w34,w35,w36,w37,w38,w39, w40,w41,w42,w43,w44,w45,w46,w47,w48,w49,w50,w51,w52,w53,w54,w55,w56,w57,w58,w59,
-                   w60,w61,w62,w63,w64,w65,w66,w67,w68,w69,w70,w71,w72,w73,w74,w75,w76,w77,w78,w79,w80,w81,w82,w83,w84,w85,w86,w87,w88,w89,w90,w91,w92,w93,w94,w95,w96,w97,
-                   w98,w99, b0,b1,b2,b3,b4,w100,w101,w102,w103,w104,w105,w106,w107,w108,w109,w110,w111,w112,w113,w114,w115,w116,w117,w118,w119 /*b13,b14,b15,b16,b17*/,w120,w121,w122,w123,w124,w125,w126,w127,
-                   w128,w129,w130,w131,w132,w133,w134,w135,w136,w137,w138,w139, b5, b6, b7,b8,b9, b10,b11,b12, w140, w141,w142,w143,w144,w145,w146,w147, b13, w148 ,w149, w150, b14, b15, b16/*  w150,w151,w152,w153,w154,w155,w156,w157,w158,w159, /* w160,w161,w162,w163,w164,w165,
-w166,w167,w168,w169,w170,w171,w172,w173,w174,w175,w176,w177,w178,w179,w180,w181,w182,w183,w184,w185,w186,w187,w188,w189,w190,w191,w192,w193,w194,w195,w196,w197,w198,w199, b20,b21,b22,b23,
-                   b24,/*b25 ,b26 ,b27 ,b28 ,b29,  w200,w201,w202,w203,w204,w205,w206,w207,w208,w209,w210,w211,w212,w213,w214, w215,w216,w217,w218,w219,w220,w221,w222,w223,w224,w225,w226,w227,w228,w229,b30,b31,b32
-                 */
+double weight[] = { /* 20 * 5 = 100 */
+                  w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,
+                  w11,w12,w13,w14,w15,w16,w17,w18,w19,
+                  w20,w21,w22,w23,w24,w25,w26,w27,w28,w29,
+                  w30,w31,w32,w33,w34,w35,w36,w37,w38,w39,
+                  w40,w41,w42,w43,w44,w45,w46,w47,w48,w49,
+                  w50,w51,w52,w53,w54,w55,w56,w57,w58,w59,
+                  w60,w61,w62,w63,w64,w65,w66,w67,w68,w69,
+                  w70,w71,w72,w73,w74,w75,w76,w77,w78,w79,
+                  w80,w81,w82,w83,w84,w85,w86,w87,w88,w89,
+                  w90,w91,w92,w93,w94,w95,w96,w97,w98,w99, 
+                  w100,w101,w102,w103,w104,w105,w106,w107,w108,w109,
+                  w110,w111,w112,w113,w114,w115,w116,w117,w118,w119,
+                  w120,w121,w122,w123,w124,w125,w126,w127,w128,w129,
+                  w130,w131,w132,w133,w134,w135,w136,w137,w138,w139,
+                  w140,w141,w142,w143,w144,w145,w146,w147,w148,w149,
+                  w150,w151,w152,w153,w154,w155,w156,w157,w158,w159,
+                  w160,w161,w162,w163,w164,w165,w166,w167,w168,w169,
+                  w170,w171,w172,w173,w174,w175,w176,w177,w178,w179,
+                  w180,w181,w182,w183,w184,w185,w186,w187,w188,w189,
+                  w190,w191,w192,w193,w194,w195,w196,w197,w198,w199, b0 ,b1 ,b2 ,b3 ,b4 ,b5 ,b6 ,b7 ,b8 ,b9 ,b10,b11,b12,b13,b14,b15,b16,b17,b18,b19,
+                  w200,w201,w202,w203,w204,w205,w206,w207,w208,w209,
+                  w210,w211,w212,w213,w214,w215,w216,w217,w218,w219,
+                  w220,w221,w222,w223,w224,w225,w226,w227,w228,w229,
+                  w230,w231,w232,w233,w234,w235,w236,w237,w238,w239,
+                  w240,w241,w242,w243,w244,w245,w246,w247,w248,w249,
+                  w250,w251,w252,w253,w254,w255,w256,w257,w258,w259,
+                  w260,w261,w262,w263,w264,w265,w266,w267,w268,w269,
+                  w270,w271,w272,w273,w274,w275,w276,w277,w278,w279,
+                  w280,w281,w282,w283,w284,w285,w286,w287,w288,w289,
+                  w290,w291,w292,w293,w294,w295,w296,w297,w298,w299,
+                  w300,w301,w302,w303,w304,w305,w306,w307,w308,w309,
+                  w310,w311,w312,w313,w314,w315,w316,w317,w318,w319,
+                  w320,w321,w322,w323,w324,w325,w326,w327,w328,w329,
+                  w330,w331,w332,w333,w334,w335,w336,w337,w338,w339,
+                  w340,w341,w342,w343,w344,w345,w346,w347,w348,w349,
+                  w350,w351,w352,w353,w354,w355,w356,w357,w358,w359,
+                  w360,w361,w362,w363,w364,w365,w366,w367,w368,w369,
+                  w370,w371,w372,w373,w374,w375,w376,w377,w378,w379,
+                  w380,w381,w382,w383,w384,w385,w386,w387,w388,w389,
+                  w390,w391,w392,w393,w394,w395,w396,w397,w398,w399, b20,b21,b22,b23,b24,b25,b26,b27,b28,b29,
+                  w400,w401,w402,w403,w404,w405,w406,w407,w408,w409,
+                  w410,w411,w412,w413,w414,w415,w416,w417,w418,w419,
+                  w420,w421,w422,w423,w424,w425,w426,w427,w428,w429,
+                  w430,w431,w432,w433,w434,w435,w436,w437,w438,w439,
+                  w440,w441,w442,w443,w444,w445,w446,w447,w448,w449, b30,b31,b32,b33,b34,
+                  w450,w451,w452,w453,w454,w455,w456,w457,w458,w459, b35, b36
+
+
+
+
+
+
+
+
+
+
+
+
                   };   // array for storing weights
 
 
@@ -348,11 +609,11 @@ void MultiCurrency::Init(const string& symbolName
 int OnInit()
 {
    EventSetTimer(60);
-   int numInput=20;
-   int numHiddenA = 5;
-   int numHiddenB = 8;
-   int numHiddenC = 1;
-   int numOutput=3;
+   int numInput=10;
+   int numHiddenA = 20;
+   int numHiddenB = 10;
+   int numHiddenC = 5;
+   int numOutput=2;
 
    eurUsdCurrency.Init(Symbol(),GlobalRsiPeriod,
                        GlobaloverboughtLevel, GlobaloversoldLevel, GlobalLotSize, numInput,
