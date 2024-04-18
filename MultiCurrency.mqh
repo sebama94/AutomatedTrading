@@ -34,10 +34,10 @@
 #include <Trade\PositionInfo.mqh> //Instatiate Library for Positions Information
 #include <..\example\DeepNeuralNetwork.mqh>
 
-#define SIZEI 10
-#define SIZEA 20
-#define SIZEB 10
-#define SIZEC 5
+#define SIZEI 30
+#define SIZEA 10
+#define SIZEB 6
+#define SIZEC 3
 #define SIZEO 2  // New layer size
 
 //+------------------------------------------------------------------+
@@ -193,28 +193,31 @@ void MultiCurrency::Run(const double& accountMargin
 
    ArraySetAsSeries(rsiBuffM5,true);
 
-   if (  CopyBuffer(_rsiHandlerM5,0,0,1,rsiBuffM5)<= 0  ||
-         CopyBuffer(_iMACD_handle,0,2,ArraySize(_xValues)/2,_iMACD_mainbuf) <= 0||
-         CopyBuffer(_iMACD_handle,1,2,ArraySize(_xValues)/2,_iMACD_signalbuf) <= 0
+   if (  CopyBuffer(_rsiHandlerM5,0,1,ArraySize(_xValues)/3,rsiBuffM5)<= 0  ||
+         CopyBuffer(_iMACD_handle,0,2,ArraySize(_xValues)/3,_iMACD_mainbuf) <= 0||
+         CopyBuffer(_iMACD_handle,1,2,ArraySize(_xValues)/3,_iMACD_signalbuf) <= 0
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
       return;
    };
 
+   double d1RSI=0.0;                                 //lower limit of the normalization range
+   double d2RSI=1.0;                                 //upper limit of the normalization range
+   double x_minRSI=rsiBuffM5[ArrayMinimum(rsiBuffM5)]; //minimum value over the range
+   double x_maxRSI=rsiBuffM5[ArrayMaximum(rsiBuffM5)]; //maximum value over the range
 
-
-
-   double d1=-1.0; //lower limit of the normalization range
-   double d2=1.0;  //upper limit of the normalization range
+   double d1MACD=-1.0; //lower limit of the normalization range
+   double d2MACD=1.0;  //upper limit of the normalization range
 //--- minimum value over the range
-   double x_min=MathMin(_iMACD_mainbuf[ArrayMinimum(_iMACD_mainbuf)],_iMACD_signalbuf[ArrayMinimum(_iMACD_signalbuf)]);
+   double x_minMACD=MathMin(_iMACD_mainbuf[ArrayMinimum(_iMACD_mainbuf)],_iMACD_signalbuf[ArrayMinimum(_iMACD_signalbuf)]);
 //--- maximum value over the range
-   double x_max=MathMax(_iMACD_mainbuf[ArrayMaximum(_iMACD_mainbuf)],_iMACD_signalbuf[ArrayMaximum(_iMACD_signalbuf)]);
-   for(int i=0;i<ArraySize(_xValues)/2;i++)
+   double x_maxMACD=MathMax(_iMACD_mainbuf[ArrayMaximum(_iMACD_mainbuf)],_iMACD_signalbuf[ArrayMaximum(_iMACD_signalbuf)]);
+   for(int i=0;i<ArraySize(_xValues)/3;i++)
    {
-      _xValues[i*2]=(((_iMACD_mainbuf[i]-x_min)*(d2-d1))/(x_max-x_min))+d1;
-      _xValues[i*2+1]=(((_iMACD_signalbuf[i]-x_min)*(d2-d1))/(x_max-x_min))+d1;
+      _xValues[i*3]=(((_iMACD_mainbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
+      _xValues[i*3+1]=(((_iMACD_signalbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
+      _xValues[i*3+2]=(((rsiBuffM5[i]-x_minRSI)*(d2RSI-d1RSI))/(x_maxRSI-x_minRSI))+d1RSI;
    }
 
    double yValues[];
@@ -228,13 +231,13 @@ void MultiCurrency::Run(const double& accountMargin
 
    if(_accountMargin < _maxRiskAmount )
    {
-      if(_timeOutExpiredOpenSell && yValues[0] > 0.6 && rsiBuffM5[0] > _overboughtLevel)
+      if(_timeOutExpiredOpenSell && yValues[0] > 0.6)
       {
          openSellOrder();
          _timeOutExpiredOpenSell = false;
       }
          
-      if( _timeOutExpiredOpenBuy && yValues[1] > 0.6 && rsiBuffM5[0] < _oversoldLevel)
+      if( _timeOutExpiredOpenBuy && yValues[1] > 0.6 )
       {
             openBuyOrder();
             _timeOutExpiredOpenBuy = false;
@@ -382,7 +385,7 @@ bool MultiCurrency::openBuyOrder()
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
 
-   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-1000*_Point),(Bid+300* _Point))) //,NULL))
+   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-2000*_Point),(Bid+500* _Point))) //,NULL))
 //   if(_trade.Buy(_lotSize, _symbolName,Ask,0,(Ask+300 * _Point)))
    {
       Print("Buy order placed.");
@@ -404,7 +407,7 @@ bool MultiCurrency::openSellOrder()
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
 
-    if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+1000*_Point),(Ask-300* _Point)))//,NULL))
+    if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+2000*_Point),(Ask-500* _Point)))//,NULL))
 //   if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-300 * _Point)))
    {
       Print("Sell order placed.");

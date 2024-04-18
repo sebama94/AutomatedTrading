@@ -6,10 +6,10 @@
 #property copyright "Copyright 2018, MetaQuotes Software Corp."
 #property link      "https://www.mql5.com"
 
-#define SIZEI 10
-#define SIZEA 20
-#define SIZEB 10
-#define SIZEC 5
+#define SIZEI 30
+#define SIZEA 10
+#define SIZEB 6
+#define SIZEC 3
 #define SIZEO 2  // New layer siz
 //+------------------------------------------------------------------+
 //|                                                                  |
