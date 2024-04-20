@@ -12,11 +12,6 @@
 
 
 /* 30 * 10 = 300*/
-
-
-
-
-
 input double w0   = 1.0;
 input double w1   = 1.0;
 input double w2   = 1.0;
@@ -442,6 +437,9 @@ input double w383 = 1.0;
 input double b19  = 1.0;
 input double b20  = 1.0;
 
+input double close = 300;
+input double close_loss = 2000;
+
 
 
 double weight[] = { /* 20 * 5 = 100 */
@@ -513,7 +511,7 @@ void MultiCurrency::Init(const string& symbolName
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   EventSetTimer(60);
+   EventSetTimer(60*30);
    int numInput=30;
    int numHiddenA = 10;
    int numHiddenB = 6;

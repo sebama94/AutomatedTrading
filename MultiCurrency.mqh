@@ -138,8 +138,8 @@ void MultiCurrency::Init(const string& symbolName
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandlerM5 = iRSI(_symbolName, PERIOD_M5, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_M5,12,26,9,PRICE_CLOSE);
+   _rsiHandlerM5 = iRSI(_symbolName, PERIOD_H4, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_H4,12,26,9,PRICE_CLOSE);
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandlerM5==INVALID_HANDLE )
    {
       //--- no handle obtained, print the error message into the log file, complete handling the error
@@ -223,7 +223,7 @@ void MultiCurrency::Run(const double& accountMargin
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
 
-   Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);
+   //Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);
 
 //define Ask, Bid
    double Ask = NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
@@ -231,13 +231,13 @@ void MultiCurrency::Run(const double& accountMargin
 
    if(_accountMargin < _maxRiskAmount )
    {
-      if(_timeOutExpiredOpenSell && yValues[0] > 0.6)
+      if(_timeOutExpiredOpenSell && yValues[0] > 0.8)
       {
          openSellOrder();
          _timeOutExpiredOpenSell = false;
       }
          
-      if( _timeOutExpiredOpenBuy && yValues[1] > 0.6 )
+      if( _timeOutExpiredOpenBuy && yValues[1] > 0.8 )
       {
             openBuyOrder();
             _timeOutExpiredOpenBuy = false;
@@ -385,7 +385,8 @@ bool MultiCurrency::openBuyOrder()
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
 
-   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-2000*_Point),(Bid+500* _Point))) //,NULL))
+   //if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-200*_Point),(Bid+150* _Point))) //,NULL))
+   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-close_loss*_Point),(Bid+close* _Point)))
 //   if(_trade.Buy(_lotSize, _symbolName,Ask,0,(Ask+300 * _Point)))
    {
       Print("Buy order placed.");
@@ -407,7 +408,8 @@ bool MultiCurrency::openSellOrder()
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
 
-    if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+2000*_Point),(Ask-500* _Point)))//,NULL))
+//    if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+200*_Point),(Ask-150* _Point)))//,NULL))
+   if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+close_loss*_Point),(Ask-close* _Point)))
 //   if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-300 * _Point)))
    {
       Print("Sell order placed.");
