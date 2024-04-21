@@ -34,10 +34,9 @@
 #include <Trade\PositionInfo.mqh> //Instatiate Library for Positions Information
 #include <..\example\DeepNeuralNetwork.mqh>
 
-#define SIZEI 30
-#define SIZEA 10
-#define SIZEB 6
-#define SIZEC 3
+#define SIZEI 9
+#define SIZEA 12
+#define SIZEB 5
 #define SIZEO 2  // New layer size
 
 //+------------------------------------------------------------------+
@@ -58,7 +57,6 @@ public:
                           , const int numInput
                           , const int numHiddenA
                           , const int numHiddenB
-                          , const int numHiddenC
                           , const int numOutput
                           , double &weights[] );
 
@@ -86,7 +84,7 @@ private:
 
 protected:
 
-   int               _rsiHandlerM1,  _rsiHandlerM5,_rsiHandlerM10;
+   int               _rsiHandlerM1,  _rsiHandler,_rsiHandlerM10;
    ENUM_TIMEFRAMES   _enumTimeFrames;
    uint              _trainBars;
    bool              _timeOutExpired;
@@ -131,22 +129,22 @@ void MultiCurrency::Init(const string& symbolName
                          , const int numInput
                          , const int numHiddenA
                          , const int numHiddenB
-                         , const int numHiddenC
                          , const int numOutput
                          , double &weights[] )
 {
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandlerM5 = iRSI(_symbolName, PERIOD_H4, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_H4,12,26,9,PRICE_CLOSE);
-   if( _iMACD_handle==INVALID_HANDLE ||_rsiHandlerM5==INVALID_HANDLE )
+   _rsiHandler = iRSI(_symbolName, PERIOD_M30, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_M30,12,26,9,PRICE_CLOSE);
+   
+   if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE )
    {
       //--- no handle obtained, print the error message into the log file, complete handling the error
       Print("Failed to get the indicator handle");
    }
 
-   _dnn.Init(numInput,numHiddenA,numHiddenB,numHiddenC, numOutput);
+   _dnn.Init(numInput,numHiddenA,numHiddenB, numOutput);
    _dnn.SetWeights(weights);
    _timeOutExpired=_timeOutExpired;
 
@@ -160,7 +158,7 @@ void MultiCurrency::Init(const string& symbolName
 //+------------------------------------------------------------------+
 MultiCurrency::~MultiCurrency()
 {
-   IndicatorRelease(_rsiHandlerM5);
+   IndicatorRelease(_rsiHandler);
    IndicatorRelease(_iMACD_handle);
 }
 
@@ -174,8 +172,8 @@ void MultiCurrency::Run(const double& accountMargin
 {
 
 
-   double rsiBuffM5[];
-   vector rsiBuffVecM5;
+   double rsiBuff[];
+   vector rsiBuffVec;
 
 
    if(timeOutExpired || PositionsTotal()==0 )
@@ -191,11 +189,12 @@ void MultiCurrency::Run(const double& accountMargin
    ArraySetAsSeries(_iMACD_mainbuf,true);
    ArraySetAsSeries(_iMACD_signalbuf,true);
 
-   ArraySetAsSeries(rsiBuffM5,true);
+   ArraySetAsSeries(rsiBuff,true);
 
-   if (  CopyBuffer(_rsiHandlerM5,0,1,ArraySize(_xValues)/3,rsiBuffM5)<= 0  ||
-         CopyBuffer(_iMACD_handle,0,2,ArraySize(_xValues)/3,_iMACD_mainbuf) <= 0||
-         CopyBuffer(_iMACD_handle,1,2,ArraySize(_xValues)/3,_iMACD_signalbuf) <= 0
+
+   if (  CopyBuffer(_rsiHandler,0,0,ArraySize(_xValues)/3,rsiBuff)<= 0  ||
+         CopyBuffer(_iMACD_handle,0,0,ArraySize(_xValues)/3,_iMACD_mainbuf) <= 0||
+         CopyBuffer(_iMACD_handle,1,0,ArraySize(_xValues)/3,_iMACD_signalbuf) <= 0 
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
@@ -204,8 +203,9 @@ void MultiCurrency::Run(const double& accountMargin
 
    double d1RSI=0.0;                                 //lower limit of the normalization range
    double d2RSI=1.0;                                 //upper limit of the normalization range
-   double x_minRSI=rsiBuffM5[ArrayMinimum(rsiBuffM5)]; //minimum value over the range
-   double x_maxRSI=rsiBuffM5[ArrayMaximum(rsiBuffM5)]; //maximum value over the range
+   double x_minRSI=rsiBuff[ArrayMinimum(rsiBuff)]; //minimum value over the range
+   double x_maxRSI=rsiBuff[ArrayMaximum(rsiBuff)]; //maximum value over the range
+
 
    double d1MACD=-1.0; //lower limit of the normalization range
    double d2MACD=1.0;  //upper limit of the normalization range
@@ -217,7 +217,7 @@ void MultiCurrency::Run(const double& accountMargin
    {
       _xValues[i*3]=(((_iMACD_mainbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
       _xValues[i*3+1]=(((_iMACD_signalbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
-      _xValues[i*3+2]=(((rsiBuffM5[i]-x_minRSI)*(d2RSI-d1RSI))/(x_maxRSI-x_minRSI))+d1RSI;
+      _xValues[i*3+2]=(((rsiBuff[i]-x_minRSI)*(d2RSI-d1RSI))/(x_maxRSI-x_minRSI))+d1RSI;
    }
 
    double yValues[];
@@ -231,13 +231,13 @@ void MultiCurrency::Run(const double& accountMargin
 
    if(_accountMargin < _maxRiskAmount )
    {
-      if(_timeOutExpiredOpenSell && yValues[0] > 0.8)
+      if(_timeOutExpiredOpenSell && yValues[0] > 0.6 && rsiBuff[0] > _overboughtLevel)
       {
          openSellOrder();
          _timeOutExpiredOpenSell = false;
       }
          
-      if( _timeOutExpiredOpenBuy && yValues[1] > 0.8 )
+      if( _timeOutExpiredOpenBuy && yValues[1] > 0.6 && rsiBuff[0] < _oversoldLevel)
       {
             openBuyOrder();
             _timeOutExpiredOpenBuy = false;
