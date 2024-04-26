@@ -10,7 +10,7 @@
 
 #include "MultiCurrency.mqh"
 
-int numInput=9;
+int numInput = 9;
 int numHiddenA = 12;
 int numHiddenB = 5;
 int numOutput=2;

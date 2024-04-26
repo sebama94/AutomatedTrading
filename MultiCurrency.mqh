@@ -205,6 +205,12 @@ void MultiCurrency::Run(const double& accountMargin
    double d2RSI=1.0;                                 //upper limit of the normalization range
    double x_minRSI=rsiBuff[ArrayMinimum(rsiBuff)]; //minimum value over the range
    double x_maxRSI=rsiBuff[ArrayMaximum(rsiBuff)]; //maximum value over the range
+   double diff_min_max_RSI = x_maxRSI-x_minRSI;
+   if( diff_min_max_RSI == 0)
+   {
+      diff_min_max_RSI=0.000001;
+      ///Print("error");
+   }
 
 
    double d1MACD=-1.0; //lower limit of the normalization range
@@ -217,7 +223,7 @@ void MultiCurrency::Run(const double& accountMargin
    {
       _xValues[i*3]=(((_iMACD_mainbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
       _xValues[i*3+1]=(((_iMACD_signalbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
-      _xValues[i*3+2]=(((rsiBuff[i]-x_minRSI)*(d2RSI-d1RSI))/(x_maxRSI-x_minRSI))+d1RSI;
+      _xValues[i*3+2]=(((rsiBuff[i]-x_minRSI)*(d2RSI-d1RSI))/diff_min_max_RSI)+d1RSI;
    }
 
    double yValues[];
