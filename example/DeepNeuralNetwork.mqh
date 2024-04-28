@@ -6,8 +6,8 @@
 #property copyright "Copyright 2018, MetaQuotes Software Corp."
 #property link      "https://www.mql5.com"
 
-#define SIZEI 9
-#define SIZEA 12
+#define SIZEI 16
+#define SIZEA 10
 #define SIZEB 5
 #define SIZEO 2  // New layer size
 //+------------------------------------------------------------------+
