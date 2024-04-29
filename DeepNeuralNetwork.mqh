@@ -8,7 +8,7 @@
 
 #define SIZEI 16
 #define SIZEA 10
-#define SIZEB 5
+#define SIZEB 6
 #define SIZEO 2  // New layer size
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -20,7 +20,6 @@ private:
    int               numInput;
    int               numHiddenA;
    int               numHiddenB;
-   int               numHiddenC;  // Additional hidden layer
    int               numOutput;
 
    double            inputs[];
@@ -31,12 +30,10 @@ private:
 
    double            aBiases[];
    double            bBiases[];
-   double            cBiases[];  // Biases for new layer
    double            oBiases[];
 
    double            aOutputs[];
    double            bOutputs[];
-   double            cOutputs[];  // Outputs for new layer
    double            outputs[];
 
 public:
@@ -94,7 +91,7 @@ void Init(int _numInput, int _numHiddenA, int _numHiddenB, int _numOutput)
          bBiases[i]=NormalizeDouble(weights[k++],2);
 
       for(int i=0; i<numHiddenB;++i)
-         for(int j=0; j<numHiddenC;++j)
+         for(int j=0; j<numOutput;++j)
             boWeights[i][j]=NormalizeDouble(weights[k++],2);
 
       for(int i = 0; i < numOutput; ++i)

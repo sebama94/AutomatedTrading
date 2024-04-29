@@ -32,11 +32,11 @@
 #include <Trade\Trade.mqh> //Instatiate Trades Execution Library
 #include <Trade\OrderInfo.mqh> //Instatiate Library for Orders Information
 #include <Trade\PositionInfo.mqh> //Instatiate Library for Positions Information
-#include <..\example\DeepNeuralNetwork.mqh>
+#include <..\DeepNeuralNetwork.mqh>
 
 #define SIZEI 16
 #define SIZEA 10
-#define SIZEB 5
+#define SIZEB 6
 #define SIZEO 2  // New layer size
 
 //+------------------------------------------------------------------+
@@ -45,8 +45,8 @@
 class MultiCurrency
 {
 public:
-                     MultiCurrency();
-                    ~MultiCurrency();
+   MultiCurrency();
+   ~MultiCurrency();
 
 
    void              Init(const string& symbolName
@@ -134,10 +134,10 @@ void MultiCurrency::Init(const string& symbolName
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandler = iRSI(_symbolName, PERIOD_M30, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_M30,12,26,9,PRICE_CLOSE);
-   _volDef=iVolumes(_symbolName,PERIOD_M30,VOLUME_TICK);
-   
+   _rsiHandler = iRSI(_symbolName, PERIOD_M5, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_M5,12,26,9,PRICE_CLOSE);
+   _volDef=iVolumes(_symbolName,PERIOD_M5,VOLUME_TICK);
+
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE || _volDef==INVALID_HANDLE )
    {
       //--- no handle obtained, print the error message into the log file, complete handling the error
@@ -179,7 +179,7 @@ void MultiCurrency::Run(const double& accountMargin
    {
       _timeOutExpiredOpenSell= true;
       _timeOutExpiredOpenBuy = true;
-      
+
    }
    _accountMargin = accountMargin;
    _maxRiskAmount = maxRiskAmount;
@@ -194,7 +194,7 @@ void MultiCurrency::Run(const double& accountMargin
    if (  CopyBuffer(_rsiHandler,0,0,ArraySize(_xValues)/4,rsiBuff)<= 0  ||
          CopyBuffer(_iMACD_handle,0,0,ArraySize(_xValues)/4,iMACD_mainbuf) <= 0||
          CopyBuffer(_iMACD_handle,1,0,ArraySize(_xValues)/4,iMACD_signalbuf) <= 0 ||
-         CopyBuffer(_volDef,0,1,ArraySize(_xValues)/4,volBuff) <= 0
+         CopyBuffer(_volDef,0,0,ArraySize(_xValues)/4,volBuff) <= 0
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
@@ -241,58 +241,30 @@ void MultiCurrency::Run(const double& accountMargin
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
 
-   Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);
+   Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
 
 
-   if(_accountMargin < _maxRiskAmount )
+
+   if(yValues[0] > 0.6)// && rsiBuff[0] > _overboughtLevel && volBuff[1] > volBuff[0])
    {
-      if(_timeOutExpiredOpenSell && yValues[1] > 0.6) //&& rsiBuff[0] > _overboughtLevel)
+      closeBuyPosition();
+      if(_accountMargin < _maxRiskAmount) // && _timeOutExpiredOpenSell )
       {
          openSellOrder();
-         _timeOutExpiredOpenSell = false;
       }
-         
-      if( _timeOutExpiredOpenBuy && yValues[0] > 0.6) // && rsiBuff[0] < _oversoldLevel)
+   }
+   else
+   {
+      if(yValues[1] > 0.6) // && rsiBuff[0] < _oversoldLevel && volBuff[1] > volBuff[0])
       {
+         closeSellPosition();
+         if(_accountMargin < _maxRiskAmount)// && _timeOutExpiredOpenBuy )
+         {
             openBuyOrder();
-            _timeOutExpiredOpenBuy = false;
+         }
       }
    }
 
-//   if( yValues[2] > 0.6 )
-//   {
-//       checkAndCloseSingleProfitOrders();
-//       if(checkAndCloseAllOrdersForProfit())
-//       {
-//          _timeOutExpiredOpenBuy = true;
-//          _timeOutExpiredOpenSell = true;
-//       }
-      
-//   }
-
-//    if(yValues[0]>0.6)
-//      {
-//       if(_myPositionInfo.Select(_symbolName))//check if there is an open position
-//         {
-//          if(_myPositionInfo.PositionType()==POSITION_TYPE_SELL) _trade.PositionClose(_symbolName);//Close the opposite position if exists
-//         }
-//       _trade.Buy(_lotSize,_symbolName);//open a Long position
-//      }
-// //--- if the output value of the neuron is mare than 60%
-//    if(yValues[1]>0.6)
-//      {
-//       if(_myPositionInfo.Select(_symbolName))//check if there is an open position
-//         {
-//          if(_myPositionInfo.PositionType()==POSITION_TYPE_BUY) _trade.PositionClose(_symbolName);//Close the opposite position if exists
-//         }
-//       _trade.Sell(_lotSize,_symbolName);//open a Short position
-//      }
-
-//    if(yValues[2]>0.6)
-//    {
-//       checkAndCloseAllOrdersForProfit();  
-//    }
-  checkAndCloseSingleProfitOrders();
   if( openPos() == 0 )
   { 
    _timeOutExpiredOpenBuy  = true;
@@ -363,7 +335,7 @@ bool MultiCurrency::checkAndCloseAllOrdersForProfit()
       double currentPrice = 0.0;
       double profit = 0.0;
 
-      if(profitAllPositions() > -1000)
+      if(profitAllPositions() > _closeInProfit)
       {
          Print("Garabage collector active!");
          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
@@ -385,7 +357,7 @@ bool MultiCurrency::checkAndCloseAllOrdersForProfit()
 //+------------------------------------------------------------------+
 int MultiCurrency::openPos()
 {
-   //Print("PositionsTotal(): ", PositionsTotal());
+//Print("PositionsTotal(): ", PositionsTotal());
    int total=PositionsTotal();
    int count=0;
    for(int cnt=0; cnt<=total; cnt++)
@@ -430,9 +402,10 @@ bool MultiCurrency::openBuyOrder()
 {
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
-   if(_trade.Buy(_lotSize, _symbolName,Ask))
-//   if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-close_loss*_Point),(Bid+close* _Point)))
-//   if(_trade.Buy(_lotSize, _symbolName,Ask,0,(Ask+300 * _Point)))
+//if(_trade.Buy(_lotSize, _symbolName,Ask))
+//if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-close_loss*_Point),(Bid+close* _Point)))
+//if(_trade.Buy(_lotSize, _symbolName,Ask,(Bid-close_loss*_Point)))
+   if(_trade.Buy(_lotSize, _symbolName))
    {
       Print("Buy order placed.");
       return true;
@@ -452,9 +425,10 @@ bool MultiCurrency::openSellOrder()
 {
    double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
    double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
-   if(_trade.Sell(_lotSize, _symbolName,Bid))
-  // if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+close_loss*_Point),(Ask-close* _Point)))
-//   if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-300 * _Point)))
+//if(_trade.Sell(_lotSize, _symbolName,Bid))
+//if(_trade.Sell(_lotSize, _symbolName,Bid,(Ask+close_loss*_Point),(Ask-close* _Point)))
+//if(_trade.Sell(_lotSize, _symbolName,Bid,0,(Bid-1500 * _Point)))
+   if(_trade.Sell(_lotSize, _symbolName))
    {
       Print("Sell order placed.");
       return true;
@@ -514,4 +488,6 @@ void MultiCurrency::closeSellPosition()
 }
 
 #endif
+//+------------------------------------------------------------------+
+
 //+------------------------------------------------------------------+
