@@ -35,8 +35,9 @@
 #include <..\DeepNeuralNetwork.mqh>
 
 #define SIZEI 16
-#define SIZEA 10
-#define SIZEB 6
+#define SIZEA 12
+#define SIZEB 8
+#define SIZEC 5
 #define SIZEO 2  // New layer size
 
 //+------------------------------------------------------------------+
@@ -57,6 +58,7 @@ public:
                           , const int numInput
                           , const int numHiddenA
                           , const int numHiddenB
+                          , const int numHiddenC
                           , const int numOutput
                           , double &weights[] );
 
@@ -129,15 +131,16 @@ void MultiCurrency::Init(const string& symbolName
                          , const int numInput
                          , const int numHiddenA
                          , const int numHiddenB
+                         , const int numHiddenC
                          , const int numOutput
                          , double &weights[] )
 {
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandler = iRSI(_symbolName, PERIOD_M5, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_M5,12,26,9,PRICE_CLOSE);
-   _volDef=iVolumes(_symbolName,PERIOD_M5,VOLUME_TICK);
+   _rsiHandler = iRSI(_symbolName, PERIOD_H4, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_H4,12,26,9,PRICE_CLOSE);
+   _volDef=iVolumes(_symbolName,PERIOD_H4,VOLUME_TICK);
 
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE || _volDef==INVALID_HANDLE )
    {
@@ -145,7 +148,7 @@ void MultiCurrency::Init(const string& symbolName
       Print("Failed to get the indicator handle");
    }
 
-   _dnn.Init(numInput,numHiddenA,numHiddenB, numOutput);
+   _dnn.Init(numInput,numHiddenA,numHiddenB, numHiddenC, numOutput);
    _dnn.SetWeights(weights);
    _timeOutExpired=_timeOutExpired;
 
@@ -244,7 +247,7 @@ void MultiCurrency::Run(const double& accountMargin
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
 
-   // Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
+ Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
 
 
 
