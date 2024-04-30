@@ -110,6 +110,7 @@ protected:
    double            _out;
    double            _xValues[SIZEI];        // array for storing inputs
    int               _volumeDef;
+   double            _oldYValue[2];
 
 };
 
@@ -151,6 +152,8 @@ void MultiCurrency::Init(const string& symbolName
    _overboughtLevel = overboughtLevel;
    _oversoldLevel = oversoldLevel;
    _lotSize = lotSize;
+   _oldYValue[0] = 0.0;
+   _oldYValue[1] = 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -191,10 +194,10 @@ void MultiCurrency::Run(const double& accountMargin
    ArraySetAsSeries(volBuff,true);
 
 
-   if (  CopyBuffer(_rsiHandler,0,0,ArraySize(_xValues)/4,rsiBuff)<= 0  ||
-         CopyBuffer(_iMACD_handle,0,0,ArraySize(_xValues)/4,iMACD_mainbuf) <= 0||
-         CopyBuffer(_iMACD_handle,1,0,ArraySize(_xValues)/4,iMACD_signalbuf) <= 0 ||
-         CopyBuffer(_volDef,0,0,ArraySize(_xValues)/4,volBuff) <= 0
+   if (  CopyBuffer(_rsiHandler,0,1,ArraySize(_xValues)/4,rsiBuff)<= 0  ||
+         CopyBuffer(_iMACD_handle,0,1,ArraySize(_xValues)/4,iMACD_mainbuf) <= 0||
+         CopyBuffer(_iMACD_handle,1,1,ArraySize(_xValues)/4,iMACD_signalbuf) <= 0 ||
+         CopyBuffer(_volDef,0,1,ArraySize(_xValues)/4,volBuff) <= 0
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
@@ -241,35 +244,31 @@ void MultiCurrency::Run(const double& accountMargin
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
 
-   Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
+   // Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
 
 
 
-   if(yValues[0] > 0.6)// && rsiBuff[0] > _overboughtLevel && volBuff[1] > volBuff[0])
+   if(yValues[0] > 0.91)// && rsiBuff[0] > _overboughtLevel && volBuff[1] > volBuff[0])
    {
       closeBuyPosition();
-      if(_accountMargin < _maxRiskAmount) // && _timeOutExpiredOpenSell )
+      if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0] ) // && _timeOutExpiredOpenSell )
       {
+         _oldYValue[0] = yValues[0];
          openSellOrder();
       }
    }
    else
    {
-      if(yValues[1] > 0.6) // && rsiBuff[0] < _oversoldLevel && volBuff[1] > volBuff[0])
+      if(yValues[1] > 0.91) // && rsiBuff[0] < _oversoldLevel && volBuff[1] > volBuff[0])
       {
          closeSellPosition();
-         if(_accountMargin < _maxRiskAmount)// && _timeOutExpiredOpenBuy )
+         if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1])// && _timeOutExpiredOpenBuy )
          {
+            _oldYValue[1] = yValues[1];
             openBuyOrder();
          }
       }
    }
-
-  if( openPos() == 0 )
-  { 
-   _timeOutExpiredOpenBuy  = true;
-   _timeOutExpiredOpenSell = true;
-  }
 }
 
 
