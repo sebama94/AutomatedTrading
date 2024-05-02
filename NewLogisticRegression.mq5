@@ -10,12 +10,6 @@
 
 #include "MultiCurrency.mqh"
 
-int numInput   = 16;
-int numHiddenA = 12;
-int numHiddenB = 8;
-int numHiddenC = 5;
-int numOutput  = 2;
-
 
 /* 16 * 12 = 192 */
 input double w0   = 1.0;
@@ -331,7 +325,7 @@ input double b17  = 1.0;
 input double b18  = 1.0;
 input double b19  = 1.0;
 
-/* 8x5 = 40 */
+/* 8x3 = 24 */
 input double w288 = 1.0;
 input double w289 = 1.0;
 input double w290 = 1.0;
@@ -356,44 +350,11 @@ input double w308 = 1.0;
 input double w309 = 1.0;
 input double w310 = 1.0;
 input double w311 = 1.0;
-input double w312 = 1.0;
-input double w313 = 1.0;
-input double w314 = 1.0;
-input double w315 = 1.0;
-input double w316 = 1.0;
-input double w317 = 1.0;
-input double w318 = 1.0;
-input double w319 = 1.0;
-input double w320 = 1.0;
-input double w321 = 1.0;
-input double w322 = 1.0;
-input double w323 = 1.0;
-input double w324 = 1.0;
-input double w325 = 1.0;
-input double w326 = 1.0;
-input double w327 = 1.0;
-/* bias 5 */
+
+/* bias 3 */
 input double b20  = 1.0;
 input double b21  = 1.0;
 input double b22  = 1.0;
-input double b23  = 1.0;
-input double b24  = 1.0;
-
-/* 5x2 = 10 */
-input double w328 = 1.0;
-input double w329 = 1.0;
-input double w330 = 1.0;
-input double w331 = 1.0;
-input double w332 = 1.0;
-input double w333 = 1.0;
-input double w334 = 1.0;
-input double w335 = 1.0;
-input double w336 = 1.0;
-input double w337 = 1.0;
-/* bias 2 */
-
-input double b25  = 1.0;
-input double b26  = 1.0;
 
 
 double close = 150;
@@ -436,10 +397,7 @@ double weight[] = {
                   
                   w288,w289,w290,w291,w292,w293,w294,w295,w296,w297,
                   w298,w299,w300,w301,w302,w303,w304,w305,w306,w307,
-                  w308,w309,w310,w311,w312,w313,w314,w315,w316,w317,
-                  w318,w319,w320,w321,w322,w323,w324,w325,w326,w327,  b20,b21,b22,b23,b24,
-                  
-                  w328,w329,w330,w331,w332,w333,w334,w335,w336,w337,  b25,b26
+                  w308,w309,w310,w311, b20,b21,b22,
                   };   // array for storing weights
 
 
@@ -449,8 +407,8 @@ MultiCurrency eurUsdCurrency;
 bool GlobaltimeOutExpired = true;
 double GlobalLotSize = 0.5;
 
-double GlobaloversoldLevel = 29;
-double GlobaloverboughtLevel = 71;
+double GlobaloversoldLevel = 30;
+double GlobaloverboughtLevel = 70;
 
 /*
 void MultiCurrency::Init(const string& symbolName
@@ -470,11 +428,16 @@ void MultiCurrency::Init(const string& symbolName
 int OnInit()
 {
    EventSetTimer(60);
+   
+   int numInput   = 16;
+   int numHiddenA = 12;
+   int numHiddenB = 8;
+   int numOutput  = 3;
 
 
    eurUsdCurrency.Init(Symbol(),GlobalRsiPeriod,
                        GlobaloverboughtLevel, GlobaloversoldLevel, GlobalLotSize, numInput,
-                       numHiddenA, numHiddenB,numHiddenC, numOutput, weight);
+                       numHiddenA, numHiddenB, numOutput, weight);
    return(INIT_SUCCEEDED);
 
 }
