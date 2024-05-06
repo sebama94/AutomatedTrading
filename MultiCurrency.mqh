@@ -34,11 +34,7 @@
 #include <Trade\PositionInfo.mqh> //Instatiate Library for Positions Information
 #include <..\DeepNeuralNetwork.mqh>
 
-#define SIZEI 16
-#define SIZEA 12
-#define SIZEB 8
-#define SIZEC 5
-#define SIZEO 2  // New layer size
+
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -58,7 +54,6 @@ public:
                           , const int numInput
                           , const int numHiddenA
                           , const int numHiddenB
-                          , const int numHiddenC
                           , const int numOutput
                           , double &weights[] );
 
@@ -82,7 +77,7 @@ private:
    void              closeBuyPosition();
    void              closeSellPosition();
    int               openPos();
-
+   void              closeAllPosition();
 
 protected:
 
@@ -106,8 +101,6 @@ protected:
    int               _volDef;
    bool              _timeOutExpiredOpenSell, _timeOutExpiredOpenBuy;
    int               _iMACD_handle;
-   double            iMACD_mainbuf[];   // dynamic array for storing indicator values
-   double            iMACD_signalbuf[]; // dynamic array for storing indicator values
    double            _weight[];
    double            _out;
    double            _xValues[SIZEI];        // array for storing inputs
@@ -131,16 +124,15 @@ void MultiCurrency::Init(const string& symbolName
                          , const int numInput
                          , const int numHiddenA
                          , const int numHiddenB
-                         , const int numHiddenC
                          , const int numOutput
                          , double &weights[] )
 {
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandler = iRSI(_symbolName, PERIOD_H4, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_H4,12,26,9,PRICE_CLOSE);
-   _volDef=iVolumes(_symbolName,PERIOD_H4,VOLUME_TICK);
+   _rsiHandler = iRSI(_symbolName,PERIOD_M2, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_M2,12,26,9,PRICE_CLOSE);
+   _volDef=iVolumes(_symbolName,PERIOD_M2,VOLUME_TICK);
 
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE || _volDef==INVALID_HANDLE )
    {
@@ -148,7 +140,7 @@ void MultiCurrency::Init(const string& symbolName
       Print("Failed to get the indicator handle");
    }
 
-   _dnn.Init(numInput,numHiddenA,numHiddenB, numHiddenC, numOutput);
+   _dnn.Init(numInput,numHiddenA,numHiddenB, numOutput);
    _dnn.SetWeights(weights);
    _timeOutExpired=_timeOutExpired;
 
@@ -179,7 +171,7 @@ void MultiCurrency::Run(const double& accountMargin
 {
 
 
-   double rsiBuff[],volBuff[],iMACD_mainbuf[],iMACD_signalbuf[];
+   double rsiBuff[],volBuff[],iMACD_mainbuf[],iMACD_signalbuf[], RSIRealTime[],volumeRealTime[],iMACD_signalRealTime[],iMACD_mainRealTime[];
 
    if(timeOutExpired || PositionsTotal()==0 )
    {
@@ -195,12 +187,20 @@ void MultiCurrency::Run(const double& accountMargin
    ArraySetAsSeries(iMACD_signalbuf,true);
    ArraySetAsSeries(rsiBuff,true);
    ArraySetAsSeries(volBuff,true);
+   ArraySetAsSeries(RSIRealTime,true);
+   ArraySetAsSeries(volumeRealTime,true);
 
+   ArraySetAsSeries(iMACD_signalRealTime,true);
+   ArraySetAsSeries(iMACD_mainRealTime,true);
 
    if (  CopyBuffer(_rsiHandler,0,1,ArraySize(_xValues)/4,rsiBuff)<= 0  ||
          CopyBuffer(_iMACD_handle,0,1,ArraySize(_xValues)/4,iMACD_mainbuf) <= 0||
          CopyBuffer(_iMACD_handle,1,1,ArraySize(_xValues)/4,iMACD_signalbuf) <= 0 ||
-         CopyBuffer(_volDef,0,1,ArraySize(_xValues)/4,volBuff) <= 0
+         CopyBuffer(_volDef,0,1,ArraySize(_xValues)/4,volBuff) <= 0  ||
+         CopyBuffer(_rsiHandler,0,0,1,RSIRealTime)<= 0 ||
+         CopyBuffer(_volDef,0,0,1,volumeRealTime) <= 0 ||
+         CopyBuffer(_iMACD_handle,0,0,1,iMACD_mainRealTime) <= 0||
+         CopyBuffer(_iMACD_handle,1,0,1,iMACD_signalRealTime) <= 0
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
@@ -246,31 +246,38 @@ void MultiCurrency::Run(const double& accountMargin
 
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
+   //Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1], " yValues[2]: ", yValues[2]);
 
- Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1]);//, " yValues[2]: ", yValues[2]);
-
-
-
-   if(yValues[0] > 0.91)// && rsiBuff[0] > _overboughtLevel && volBuff[1] > volBuff[0])
+   if(yValues[0] > 0.85 )
    {
       closeBuyPosition();
-      if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0] ) // && _timeOutExpiredOpenSell )
+      if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0] && 
+         RSIRealTime[0] > _overboughtLevel && volumeRealTime[0] > volBuff[0] &&
+         iMACD_mainRealTime[0] < iMACD_signalRealTime[0] )
       {
          _oldYValue[0] = yValues[0];
          openSellOrder();
       }
    }
-   else
+
+   if(yValues[1] > 0.85 )
    {
-      if(yValues[1] > 0.91) // && rsiBuff[0] < _oversoldLevel && volBuff[1] > volBuff[0])
-      {
          closeSellPosition();
-         if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1])// && _timeOutExpiredOpenBuy )
+         if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1]  && 
+            RSIRealTime[0] < _oversoldLevel && volumeRealTime[0] > volBuff[0] &&
+            iMACD_mainRealTime[0] > iMACD_signalRealTime[0] )
          {
             _oldYValue[1] = yValues[1];
             openBuyOrder();
          }
-      }
+   }
+   if(yValues[2] > 0.6)
+   {
+      closeAllPosition();
+   }
+   else
+   {
+      checkAndCloseSingleProfitOrders();
    }
 }
 
@@ -286,7 +293,7 @@ bool MultiCurrency::checkAndCloseSingleProfitOrders()
       if(_myPositionInfo.SelectByIndex(i))
       {
          singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-         if(singleProfit > _closeInProfit)
+         if(singleProfit > _closeInProfit )
          {
             if(_myPositionInfo.SelectByIndex(i))
             {
@@ -488,6 +495,13 @@ void MultiCurrency::closeSellPosition()
       }
    }
 }
+
+void MultiCurrency::closeAllPosition()
+{
+   closeSellPosition();
+   closeBuyPosition();
+}
+
 
 #endif
 //+------------------------------------------------------------------+
