@@ -460,9 +460,10 @@ void OnTick()
 
    double accountMargin = AccountInfoDouble(ACCOUNT_MARGIN);
    double maxRiskAmount = AccountInfoDouble(ACCOUNT_BALANCE) * (MaxRiskPercentage / 100.0);
-   double closeInProfit = AccountInfoDouble(ACCOUNT_BALANCE) * 0.01;
+   //double closeInProfit = AccountInfoDouble(ACCOUNT_BALANCE) * 0.01;
 //Run(const double& accountMargin, const double& maxRiskAmount, const double& closeInProfit,bool timeOutExpired)
-
+   double closeInProfit = 300;
+   //Print("close in profit: ", closeInProfit);
    eurUsdCurrency.Run(accountMargin, maxRiskAmount, closeInProfit, GlobaltimeOutExpired);
    GlobaltimeOutExpired = false;
 }

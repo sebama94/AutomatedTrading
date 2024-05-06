@@ -130,9 +130,9 @@ void MultiCurrency::Init(const string& symbolName
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   _rsiHandler = iRSI(_symbolName, PERIOD_M5, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle=iMACD(_symbolName,PERIOD_M5,12,26,9,PRICE_CLOSE);
-   _volDef=iVolumes(_symbolName,PERIOD_M5,VOLUME_TICK);
+   _rsiHandler = iRSI(_symbolName,PERIOD_M2, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_M2,12,26,9,PRICE_CLOSE);
+   _volDef=iVolumes(_symbolName,PERIOD_M2,VOLUME_TICK);
 
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE || _volDef==INVALID_HANDLE )
    {
@@ -246,8 +246,9 @@ void MultiCurrency::Run(const double& accountMargin
 
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
-   
-   if(yValues[0] > 0.7 )
+   //Print("yValues[0]: ", yValues[0], " yValues[1]: ", yValues[1], " yValues[2]: ", yValues[2]);
+
+   if(yValues[0] > 0.85 )
    {
       closeBuyPosition();
       if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0] && 
@@ -259,7 +260,7 @@ void MultiCurrency::Run(const double& accountMargin
       }
    }
 
-   if(yValues[1] > 0.7)
+   if(yValues[1] > 0.85 )
    {
          closeSellPosition();
          if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1]  && 
@@ -273,6 +274,10 @@ void MultiCurrency::Run(const double& accountMargin
    if(yValues[2] > 0.6)
    {
       closeAllPosition();
+   }
+   else
+   {
+      checkAndCloseSingleProfitOrders();
    }
 }
 
@@ -288,7 +293,7 @@ bool MultiCurrency::checkAndCloseSingleProfitOrders()
       if(_myPositionInfo.SelectByIndex(i))
       {
          singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-         if(singleProfit > _closeInProfit)
+         if(singleProfit > _closeInProfit )
          {
             if(_myPositionInfo.SelectByIndex(i))
             {
