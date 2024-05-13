@@ -11,7 +11,7 @@
 #include "MultiCurrency.mqh"
 
 
-/* 16 * 12 = 192 */
+/* 12x5x8 = 256 */
 input double w0   = 1.0;
 input double w1   = 1.0;
 input double w2   = 1.0;
@@ -204,7 +204,7 @@ input double w188 = 1.0;
 input double w189 = 1.0;
 input double w190 = 1.0;
 input double w191 = 1.0;
-/* bias 12 */
+/* bias 8 */
 input double b0   = 1.0;
 input double b1   = 1.0;
 input double b2   = 1.0;
@@ -213,12 +213,8 @@ input double b4   = 1.0;
 input double b5   = 1.0;
 input double b6   = 1.0;
 input double b7   = 1.0;
-input double b8   = 1.0;
-input double b9   = 1.0;
-input double b10  = 1.0;
-input double b11  = 1.0;
 
-/* 12x8 = 96 */
+/* 8x5 = 40 */
 input double w192 = 1.0;
 input double w193 = 1.0;
 input double w194 = 1.0;
@@ -259,6 +255,15 @@ input double w228 = 1.0;
 input double w229 = 1.0;
 input double w230 = 1.0;
 input double w231 = 1.0;
+
+/* bias 5 */
+input double b8  = 1.0;
+input double b9  = 1.0;
+input double b10  = 1.0;
+input double b11  = 1.0;
+input double b12  = 1.0;
+
+/* 5x2 = 10 */
 input double w232 = 1.0;
 input double w233 = 1.0;
 input double w234 = 1.0;
@@ -269,93 +274,10 @@ input double w238 = 1.0;
 input double w239 = 1.0;
 input double w240 = 1.0;
 input double w241 = 1.0;
-input double w242 = 1.0;
-input double w243 = 1.0;
-input double w244 = 1.0;
-input double w245 = 1.0;
-input double w246 = 1.0;
-input double w247 = 1.0;
-input double w248 = 1.0;
-input double w249 = 1.0;
-input double w250 = 1.0;
-input double w251 = 1.0;
-input double w252 = 1.0;
-input double w253 = 1.0;
-input double w254 = 1.0;
-input double w255 = 1.0;
-input double w256 = 1.0;
-input double w257 = 1.0;
-input double w258 = 1.0;
-input double w259 = 1.0;
-input double w260 = 1.0;
-input double w261 = 1.0;
-input double w262 = 1.0;
-input double w263 = 1.0;
-input double w264 = 1.0;
-input double w265 = 1.0;
-input double w266 = 1.0;
-input double w267 = 1.0;
-input double w268 = 1.0;
-input double w269 = 1.0;
-input double w270 = 1.0;
-input double w271 = 1.0;
-input double w272 = 1.0;
-input double w273 = 1.0;
-input double w274 = 1.0;
-input double w275 = 1.0;
-input double w276 = 1.0;
-input double w277 = 1.0;
-input double w278 = 1.0;
-input double w279 = 1.0;
-input double w280 = 1.0;
-input double w281 = 1.0;
-input double w282 = 1.0;
-input double w283 = 1.0;
-input double w284 = 1.0;
-input double w285 = 1.0;
-input double w286 = 1.0;
-input double w287 = 1.0;
-/* bias 8 */
-input double b12  = 1.0;
+
+/* bias 2 */
 input double b13  = 1.0;
 input double b14  = 1.0;
-input double b15  = 1.0;
-input double b16  = 1.0;
-input double b17  = 1.0;
-input double b18  = 1.0;
-input double b19  = 1.0;
-
-/* 8x3 = 24 */
-input double w288 = 1.0;
-input double w289 = 1.0;
-input double w290 = 1.0;
-input double w291 = 1.0;
-input double w292 = 1.0;
-input double w293 = 1.0;
-input double w294 = 1.0;
-input double w295 = 1.0;
-input double w296 = 1.0;
-input double w297 = 1.0;
-input double w298 = 1.0;
-input double w299 = 1.0;
-input double w300 = 1.0;
-input double w301 = 1.0;
-input double w302 = 1.0;
-input double w303 = 1.0;
-input double w304 = 1.0;
-input double w305 = 1.0;
-input double w306 = 1.0;
-input double w307 = 1.0;
-input double w308 = 1.0;
-input double w309 = 1.0;
-input double w310 = 1.0;
-input double w311 = 1.0;
-
-/* bias 3 */
-input double b20  = 1.0;
-input double b21  = 1.0;
-input double b22  = 1.0;
-
 
 double close = 150;
 double close_loss = 1500;
@@ -382,22 +304,14 @@ double weight[] = {
                   w160,w161,w162,w163,w164,w165,w166,w167,w168,w169,
                   w170,w171,w172,w173,w174,w175,w176,w177,w178,w179,
                   w180,w181,w182,w183,w184,w185,w186,w187,w188,w189,
-                  w190,w191,                                         b0 ,b1 ,b2 ,b3 ,b4 ,b5 ,b6 ,b7 ,b8 ,b9,b10,b11,          
+                  w190,w191,                                         b0 ,b1 ,b2 ,b3 ,b4 ,b5 ,b6 ,b7,         
                   
                   w192,w193,w194,w195,w196,w197,w198,w199,
                   w200,w201,w202,w203,w204,w205,w206,w207,w208,w209,                        
                   w210,w211,w212,w213,w214,w215,w216,w217,w218,w219,
                   w220,w221,w222,w223,w224,w225,w226,w227,w228,w229,
-                  w230,w231,w232,w233,w234,w235,w236,w237,w238,w239,
-                  w240,w241,w242,w243,w244,w245,w246,w247,w248,w249,
-                  w250,w251,w252,w253,w254,w255,w256,w257,w258,w259,
-                  w260,w261,w262,w263,w264,w265,w266,w267,w268,w269,
-                  w270,w271,w272,w273,w274,w275,w276,w277,w278,w279,
-                  w280,w281,w282,w283,w284,w285,w286,w287,            b12,b13,b14,b15,b16,b17,b18,b19,
-                  
-                  w288,w289,w290,w291,w292,w293,w294,w295,w296,w297,
-                  w298,w299,w300,w301,w302,w303,w304,w305,w306,w307,
-                  w308,w309,w310,w311, b20,b21,b22,
+                  w230,w231,                                         b8 ,b9,b10,b11,b12,
+                  w232,w233,w234,w235,w236,w237,w238,w239,w240,w241, b13,b14
                   };   // array for storing weights
 
 
@@ -410,17 +324,6 @@ double GlobalLotSize = 0.5;
 double GlobaloversoldLevel = 30;
 double GlobaloverboughtLevel = 70;
 
-/*
-void MultiCurrency::Init(const string& symbolName
-                         , const int bbPeriod
-                         , const double bbDeviation
-                         , const int bbBandShift
-                         , const int rsiPeriod
-                         , const int trainBars
-                         , const double overboughtLevel
-                         , const double oversoldLevel
-                         , const double lotSize )
-*/
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -429,10 +332,10 @@ int OnInit()
 {
    EventSetTimer(60);
    
-   int numInput   = 16;
-   int numHiddenA = 12;
-   int numHiddenB = 8;
-   int numOutput  = 3;
+   int numInput   = 24;
+   int numHiddenA = 8;
+   int numHiddenB = 5;
+   int numOutput  = 2;
 
 
    eurUsdCurrency.Init(Symbol(),GlobalRsiPeriod,
