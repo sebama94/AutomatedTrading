@@ -421,7 +421,6 @@ int CandlePatterns(double high,double low,double open,double close,double uod,do
       bodyPer=open-close;
       trend=0;
      }
-   if(p100==0)return(-1);
    xInputs[0]=highPer/p100;
    xInputs[1]=lowPer/p100;
    xInputs[2]=bodyPer/p100;
