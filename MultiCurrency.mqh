@@ -102,7 +102,7 @@ protected:
    int               _volDef;
    bool              _timeOutExpiredOpenSell, _timeOutExpiredOpenBuy;
    int               _iMACD_handle, _iMACD_handle_M30, _iMACD_handle_H4;
-   int               _momentumDef,_stochDef, _momentumDef_M5;
+   int               _momentumDef,_stochDef, _momentumDef_M5, _stochDef_M30;
    double            _weight[];
    double            _out;
    double            _xValues[SIZEI];        // array for storing inputs
@@ -132,18 +132,18 @@ void MultiCurrency::Init(const string& symbolName
    _rsiPeriod = rsiPeriod;
    _symbolName = symbolName;
 
-   //_rsiHandler = iRSI(_symbolName,PERIOD_M5, _rsiPeriod, PRICE_CLOSE);
-   // _iMACD_handle=iMACD(_symbolName,PERIOD_M5,12,26,9,PRICE_CLOSE);
+   _rsiHandler = iRSI(_symbolName,PERIOD_H2, _rsiPeriod, PRICE_CLOSE);
+   _iMACD_handle=iMACD(_symbolName,PERIOD_H2,12,26,9,PRICE_CLOSE);
 
-   _rsiHandler_M30   = iRSI(_symbolName,PERIOD_M10, _rsiPeriod, PRICE_CLOSE);
-   _iMACD_handle_M30 = iMACD(_symbolName,PERIOD_M10,12,26,9,PRICE_CLOSE);
+   _rsiHandler_M30 = iRSI(_symbolName,PERIOD_M30, _rsiPeriod, PRICE_CLOSE);
+   
 
 // _rsiHandler_H4   = iRSI(_symbolName,PERIOD_M10, _rsiPeriod, PRICE_CLOSE);
    // _iMACD_handle_H4 = iMACD(_symbolName,PERIOD_H4,12,26,9,PRICE_CLOSE);
 //_momentumDef_M5 =  iMomentum(_symbolName,PERIOD_M5,14,PRICE_CLOSE);
-   _momentumDef =  iMomentum(_symbolName,PERIOD_M10,14,PRICE_CLOSE);
-   _stochDef = iStochastic(_symbolName,PERIOD_M10,5,3,3,MODE_SMA,STO_LOWHIGH);
-
+  // _momentumDef =  iMomentum(_symbolName,PERIOD_M10,14,PRICE_CLOSE);
+   _stochDef = iStochastic(_symbolName,PERIOD_H2,5,3,3,MODE_SMA,STO_LOWHIGH);
+   _stochDef_M30 = iStochastic(_symbolName,PERIOD_M30,5,3,3,MODE_SMA,STO_LOWHIGH);
 
    if( _iMACD_handle==INVALID_HANDLE ||_rsiHandler==INVALID_HANDLE || _volDef==INVALID_HANDLE ||
          _rsiHandler_M30==INVALID_HANDLE || _iMACD_handle_M30 == INVALID_HANDLE || _stochDef == INVALID_HANDLE  || _momentumDef == INVALID_HANDLE)
@@ -188,9 +188,9 @@ void MultiCurrency::Run(const double& accountMargin
                         , const double& closeInProfit
                         , bool timeOutExpired)
 {
-   MqlRates rates[];
-   ArraySetAsSeries(rates,true);
-   int copied=CopyRates(_symbolName,PERIOD_M10,1,5,rates);
+   //MqlRates rates[];
+   //ArraySetAsSeries(rates,true);
+   //int copied=CopyRates(_symbolName,PERIOD_M10,1,5,rates);
    double xValueRaw[4];
 
    double rsiBuff[],volBuff[],iMACD_mainbuf[],iMACD_signalbuf[],volumeRealTime[],
@@ -220,23 +220,22 @@ void MultiCurrency::Run(const double& accountMargin
    ArraySetAsSeries(DarrayRealTime, true);
    ArraySetAsSeries(momentumBuffRealTime,true);
 
-   if (  candlePatterns(rates[0].high,rates[0].low,rates[0].open,rates[0].close,rates[0].close-rates[0].open,xValueRaw) <= 0 ||
-         //CopyBuffer(_rsiHandler,0,1,ArraySize(_xValues)/6,rsiBuff)<= 0  ||
-         // CopyBuffer(_iMACD_handle,0,1,ArraySize(_xValues)/6,iMACD_mainbuf) <= 0||
-         // CopyBuffer(_iMACD_handle,1,1,ArraySize(_xValues)/6,iMACD_signalbuf) <= 0 ||
-         CopyBuffer(_rsiHandler_M30,0,1,ArraySize(_xValues)/6,rsiBuff_M30)<= 0 ||
-         CopyBuffer(_iMACD_handle_M30,0,1,ArraySize(_xValues)/6,iMACD_mainbuf_M30) <= 0||
-         CopyBuffer(_iMACD_handle_M30,1,1,ArraySize(_xValues)/6,iMACD_signalbuf_M30) <= 0 ||
+   if (  //candlePatterns(rates[0].high,rates[0].low,rates[0].open,rates[0].close,rates[0].close-rates[0].open,xValueRaw) <= 0 ||
+         //CopyBuffer(_rsiHandler,0,1,ArraySize(_xValues)/3,rsiBuff)<= 0  ||
+         CopyBuffer(_iMACD_handle,0,1,ArraySize(_xValues)/5,iMACD_mainbuf) <= 0||
+         CopyBuffer(_iMACD_handle,1,1,ArraySize(_xValues)/5,iMACD_signalbuf) <= 0 ||
+         CopyBuffer(_rsiHandler,0,1,ArraySize(_xValues)/5,rsiBuff_M30)<= 0 ||
+         //CopyBuffer(_iMACD_handle_M30,0,1,ArraySize(_xValues)/3,iMACD_mainbuf_M30) <= 0||
+         //CopyBuffer(_iMACD_handle_M30,1,1,ArraySize(_xValues)/3,iMACD_signalbuf_M30) <= 0 ||
          CopyBuffer(_rsiHandler_M30,0,0,3,rsiRealTIme)<= 0 ||
-         // CopyBuffer(_iMACD_handle_H4,0,1,ArraySize(_xValues)/6,iMACD_mainbuf_H4) <= 0||
-         // CopyBuffer(_iMACD_handle_H4,1,1,ArraySize(_xValues)/6,iMACD_signalbuf_H4) <= 0 ||
-         CopyBuffer(_rsiHandler_M30,0,0,2,rsiRealTIme) <= 0  ||
-         CopyBuffer(_momentumDef,0,1,ArraySize(_xValues)/6,momentumBuff) <= 0 ||
-         CopyBuffer(_stochDef,0,1,ArraySize(_xValues)/6,Karray) <= 0 ||
-         CopyBuffer(_stochDef,1,1,ArraySize(_xValues)/6,Darray) <= 0 ||
+         // CopyBuffer(_iMACD_handle_H4,0,1,ArraySize(_xValues)/3,iMACD_mainbuf_H4) <= 0||
+         // CopyBuffer(_iMACD_handle_H4,1,1,ArraySize(_xValues)/3,iMACD_signalbuf_H4) <= 0 ||
+         //CopyBuffer(_momentumDef,0,1,ArraySize(_xValues)/3,momentumBuff) <= 0 ||
+         CopyBuffer(_stochDef,0,1,ArraySize(_xValues)/5,Karray) <= 0 ||
+         CopyBuffer(_stochDef,1,1,ArraySize(_xValues)/5,Darray) <= 0 ||
 
-         CopyBuffer(_stochDef,0,0,3,KarrayRealTime) <= 0 ||
-         CopyBuffer(_stochDef,1,0,3,DarrayRealTime) <= 0
+         CopyBuffer(_stochDef_M30,0,0,3,KarrayRealTime) <= 0 ||
+         CopyBuffer(_stochDef_M30,1,0,3,DarrayRealTime) <= 0
       )
    {
       Print("Error copying Signal buffer: ", GetLastError());
@@ -276,24 +275,26 @@ void MultiCurrency::Run(const double& accountMargin
 
    double d1MACD=-1.0; //lower limit of the normalization range
    double d2MACD=1.0;  //upper limit of the normalization range
-   // double x_minMACD=MathMin(iMACD_mainbuf[ArrayMinimum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMinimum(iMACD_signalbuf)]);
-   // double x_maxMACD=MathMax(iMACD_mainbuf[ArrayMaximum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMaximum(iMACD_signalbuf)]);
-   double x_minMACD_M30 = MathMin(iMACD_mainbuf_M30[ArrayMinimum(iMACD_mainbuf_M30)],iMACD_signalbuf_M30[ArrayMinimum(iMACD_signalbuf_M30)]);
-   double x_maxMACD_M30 = MathMax(iMACD_mainbuf_M30[ArrayMaximum(iMACD_mainbuf_M30)],iMACD_signalbuf_M30[ArrayMaximum(iMACD_signalbuf_M30)]);
+   //double x_minMACD=MathMin(iMACD_mainbuf[ArrayMinimum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMinimum(iMACD_signalbuf)]);
+   //double x_maxMACD=MathMax(iMACD_mainbuf[ArrayMaximum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMaximum(iMACD_signalbuf)]);
+   double x_minMACD_M30 = MathMin(iMACD_mainbuf[ArrayMinimum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMinimum(iMACD_signalbuf)]);
+   double x_maxMACD_M30 = MathMax(iMACD_mainbuf[ArrayMaximum(iMACD_mainbuf)],iMACD_signalbuf[ArrayMaximum(iMACD_signalbuf)]);
    // double x_minMACD_H4 = MathMin(iMACD_mainbuf_H4[ArrayMinimum(iMACD_mainbuf_H4)],iMACD_signalbuf_H4[ArrayMinimum(iMACD_signalbuf_H4)]);
    // double x_maxMACD_H4 = MathMax(iMACD_mainbuf_H4[ArrayMaximum(iMACD_mainbuf_H4)],iMACD_signalbuf_H4[ArrayMaximum(iMACD_signalbuf_H4)]);
 
 
    double d1Momenntum = -1.0;
    double d2Momenntum = 1.0;
-   double x_minMomentum=momentumBuff[ArrayMinimum(momentumBuff)]; //minimum value over the range
-   double x_maxMomentum=momentumBuff[ArrayMaximum(momentumBuff)]; //maximum value over the range
-   double diff_min_maxMomentum = x_maxMomentum-x_minMomentum;
-   if( diff_min_maxMomentum == 0)
-   {
-      diff_min_maxMomentum=0.000001;
+   
+   
+   //double x_minMomentum=momentumBuff[ArrayMinimum(momentumBuff)]; //minimum value over the range
+   //double x_maxMomentum=momentumBuff[ArrayMaximum(momentumBuff)]; //maximum value over the range
+   //double diff_min_maxMomentum = x_maxMomentum-x_minMomentum;
+   //if( diff_min_maxMomentum == 0)
+   //{
+   //   diff_min_maxMomentum=0.000001;
       ///Print("error");
-   }
+   // }
 
    double d1Stoch =-1.0; //lower limit of the normalization range
    double d2Stoch =1.0;  //upper limit of the normalization range
@@ -303,57 +304,65 @@ void MultiCurrency::Run(const double& accountMargin
 
 
 
-   for(int i=0;i<ArraySize(_xValues)/6;i++)
+   for(int i=0;i<ArraySize(_xValues)/5;i++)
    {
       //_xValues[i*12]=(((iMACD_mainbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
       //_xValues[i*12+1]=(((iMACD_signalbuf[i]-x_minMACD)*(d2MACD-d1MACD))/(x_maxMACD-x_minMACD))+d1MACD;
-      _xValues[i*6]=(((iMACD_mainbuf_M30[i]-x_minMACD_M30)*(d2MACD-d1MACD))/(x_maxMACD_M30-x_minMACD_M30))+d1MACD;
-      _xValues[i*6+1]= (((iMACD_signalbuf_M30[i]-x_minMACD_M30)*(d2MACD-d1MACD))/(x_maxMACD_M30-x_minMACD_M30))+d1MACD;
+      _xValues[i*5]=(((iMACD_mainbuf[i]-x_minMACD_M30)*(d2MACD-d1MACD))/(x_maxMACD_M30-x_minMACD_M30))+d1MACD;
+      _xValues[i*5+1]= (((iMACD_mainbuf[i]-x_minMACD_M30)*(d2MACD-d1MACD))/(x_maxMACD_M30-x_minMACD_M30))+d1MACD;
       //_xValues[i*12+4]=(((iMACD_mainbuf_H4[i]-x_minMACD_H4)*(d2MACD-d1MACD))/(x_maxMACD_H4-x_minMACD_H4))+d1MACD;
       //_xValues[i*12+5]= (((iMACD_signalbuf_H4[i]-x_minMACD_H4)*(d2MACD-d1MACD))/(x_maxMACD_H4-x_minMACD_H4))+d1MACD;12
       //_xValues[i*8+2]=(((rsiBuff[i]-x_minRSI)*(d2RSI-d1RSI))/diff_min_max_RSI)+d1RSI;
-      _xValues[i*6+2]=(((rsiBuff_M30[i]-x_minRSI_M30)*(d2RSI-d1RSI))/diff_min_max_RSI_M30)+d1RSI;
+      _xValues[i*5+2]=(((rsiBuff_M30[i]-x_minRSI_M30)*(d2RSI-d1RSI))/diff_min_max_RSI_M30)+d1RSI;
       //_xValues[i*8+4]=(((rsiBuff_H4[i]-x_minRSI_H4)*(d2RSI-d1RSI))/diff_min_max_RSI_H4)+d1RSI;
-      _xValues[i*6+3]=(((momentumBuff[i]-x_minMomentum)*(d2Momenntum-d1Momenntum))/diff_min_maxMomentum)+d1Momenntum;
-      _xValues[i*6+4]=(((Karray[i]-x_minStoch)*(d2Stoch-d1Stoch))/(x_maxStoch-x_minStoch))+d1Stoch;
-      _xValues[i*6+5]=(((Darray[i]-x_minStoch)*(d2Stoch-d1Stoch))/(x_maxStoch-x_minStoch))+d1Stoch;
+      // _xValues[i*6+3]=(((momentumBuff[i]-x_minMomentum)*(d2Momenntum-d1Momenntum))/diff_min_maxMomentum)+d1Momenntum;
+      _xValues[i*5+3]=(((Karray[i]-x_minStoch)*(d2Stoch-d1Stoch))/(x_maxStoch-x_minStoch))+d1Stoch;
+      _xValues[i*5+4]=(((Darray[i]-x_minStoch)*(d2Stoch-d1Stoch))/(x_maxStoch-x_minStoch))+d1Stoch;
    }
    ArrayInsert(_xValues, xValueRaw, ArraySize(_xValues), 0,WHOLE_ARRAY);
 
    double yValues[];
    _dnn.ComputeOutputs(_xValues,yValues);
-
+  // Print("SymbolName: ", _symbolName, " Values[0]: ",yValues[0], " yValues[1]: ",yValues[1], " yValues[2]: ", yValues[2]);
+  // Print(KarrayRealTime[0], " > 80  && " ,DarrayRealTime[0] ," > 80 && ", KarrayRealTime[0] ," < ",DarrayRealTime[0] ," && ", Karray[0] ," > ", Darray[0]);
    if(yValues[0] > 0.6 )
    {
-      closeBuyPosition();
-
-      if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0] /* && rsiRealTIme[0] > _overboughtLevel */ &&
+      
+//closeBuyPosition();
+      if(_accountMargin < _maxRiskAmount && _oldYValue[0] != yValues[0]  && rsiRealTIme[0] > _overboughtLevel  &&
             KarrayRealTime[0] > 80 && DarrayRealTime[0] > 80 && KarrayRealTime[0] < DarrayRealTime[0] && Karray[0] > Darray[0] )
       {
 
          //Print(" Sell - rsiRealTIme_M30[0]  " , rsiRealTIme[0]," momentumBuffRealTime ",momentumBuffRealTime[0] );
          _oldYValue[0] = yValues[0];
          openSellOrder();
+         
       }
 
    }
 
    if(yValues[1] > 0.6 )
    {
-      closeSellPosition();
-
-      if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1] /* && rsiRealTIme[0] < _oversoldLevel */ &&
+      
+//closeSellPosition();
+      if(_accountMargin < _maxRiskAmount && _oldYValue[1] != yValues[1]  && rsiRealTIme[0] < _oversoldLevel  &&
             KarrayRealTime[0] < 20 && DarrayRealTime[0] < 20 && KarrayRealTime[0] > DarrayRealTime[0] && Karray[0] < Darray[0] )
       {
          //Print(" Buy - rsiRealTIme_M30[0]  " , rsiRealTIme[0]," momentumBuffRealTime ",momentumBuffRealTime[0] );
          _oldYValue[1] = yValues[1];
          openBuyOrder();
+         
       }
+      
 
    }
-
+   if(yValues[2] > 0.7 )
+   {
+      closeAllPosition();
+   }
+   
    checkAndCloseSingleProfitOrders();
-
+   
 }
 
 
@@ -368,7 +377,7 @@ bool MultiCurrency::checkAndCloseSingleProfitOrders()
       if(_myPositionInfo.SelectByIndex(i))
       {
          singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-         if(singleProfit > _closeInProfit )
+         if(singleProfit > close_profit )
          {
             if(_myPositionInfo.SelectByIndex(i))
             {
