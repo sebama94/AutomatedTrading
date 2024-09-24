@@ -573,43 +573,6 @@ void MultiCurrency::closeAllPosition()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-int MultiCurrency::candlePatterns(double high,double low,double open,double close,double uod,double &xInputs[])
-{
-   double p100=high-low;
-   double highPer=0;
-   double lowPer=0;
-   double bodyPer=0;
-   double trend=0;
-
-   if(uod>0)
-   {
-      highPer=high-close;
-      lowPer=open-low;
-      bodyPer=close-open;
-      trend=1;
-
-   }
-   else
-   {
-      highPer=high-open;
-      lowPer=close-low;
-      bodyPer=open-close;
-      trend=0;
-   }
-
-   if( p100 == 0 )
-   {
-      p100 = 0.00001;
-   }
-
-   xInputs[0]=highPer/p100;
-   xInputs[1]=lowPer/p100;
-   xInputs[2]=bodyPer/p100;
-   xInputs[3]=trend;
-
-   return(1);
-
-}
 
 
 #endif
