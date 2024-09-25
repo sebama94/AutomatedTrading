@@ -17,9 +17,9 @@ class NeuralNetwork
 private:
    int               m_numLayers;
    int               m_layerSizes[MAX_LAYERS];
-   double            m_neurons[MAX_LAYERS][MAX_NEURONS];
-   double            m_weights[MAX_LAYERS-1][MAX_NEURONS][MAX_NEURONS];
-   double            m_biases[MAX_LAYERS-1][MAX_NEURONS];
+   double            m_neurons[];
+   double            m_weights[];
+   double            m_biases[];
    double            m_learningRate;
 
 public:
@@ -36,10 +36,12 @@ public:
    void              PrintWeights();
    
 private:
-   double            Activate(double x);
-   double            ActivateDerivative(double x);
+   double            ActivateHidden(double x);
+   double            ActivateHiddenDerivative(double x);
+   void              ActivateOutput(double &x[], int size, int startIndex);
+   void              ActivateOutputDerivative(double &x[], double &result[], int size);
    void              BackPropagate(double &inputs[], double &targets[], double learningRate);
-   double            MeanSquaredError(double &targets[], double &outputs[]);
+   double            CrossEntropyError(double &targets[], double &outputs[]);
   };
 
 //+------------------------------------------------------------------+
@@ -50,9 +52,9 @@ NeuralNetwork::NeuralNetwork(double learningRate=0.01)
    m_numLayers = 0;
    m_learningRate = learningRate;
    ArrayInitialize(m_layerSizes, 0);
-   ArrayInitialize(m_neurons, 0);
-   ArrayInitialize(m_weights, 0);
-   ArrayInitialize(m_biases, 0);
+   ArrayResize(m_neurons, 0);
+   ArrayResize(m_weights, 0);
+   ArrayResize(m_biases, 0);
   }
 
 //+------------------------------------------------------------------+
@@ -75,6 +77,7 @@ bool NeuralNetwork::Initialize(int &layerSizes[], int numLayers)
 
    m_numLayers = numLayers;
    
+   int totalNeurons = 0;
    for(int i = 0; i < numLayers; i++)
      {
       if(layerSizes[i] > MAX_NEURONS)
@@ -83,7 +86,25 @@ bool NeuralNetwork::Initialize(int &layerSizes[], int numLayers)
          return false;
         }
       m_layerSizes[i] = layerSizes[i];
+      totalNeurons += layerSizes[i];
      }
+   
+   ArrayResize(m_neurons, totalNeurons);
+   ArrayInitialize(m_neurons, 0);
+   
+   int totalWeights = 0;
+   int totalBiases = 0;
+   for(int i = 0; i < numLayers - 1; i++)
+     {
+      totalWeights += layerSizes[i] * layerSizes[i+1];
+      totalBiases += layerSizes[i+1];
+     }
+   
+   ArrayResize(m_weights, totalWeights);
+   ArrayInitialize(m_weights, 0);
+   
+   ArrayResize(m_biases, totalBiases);
+   ArrayInitialize(m_biases, 0);
    
    return true;
   }
@@ -93,22 +114,12 @@ bool NeuralNetwork::Initialize(int &layerSizes[], int numLayers)
 //+------------------------------------------------------------------+
 void NeuralNetwork::SetWeights(double &weights[])
   {
-   int index = 0;
-   for(int layer = 0; layer < m_numLayers - 1; layer++)
+   if(ArraySize(weights) != ArraySize(m_weights))
      {
-      for(int i = 0; i < m_layerSizes[layer+1]; i++)
-        {
-         for(int j = 0; j < m_layerSizes[layer]; j++)
-           {
-            if(index >= ArraySize(weights))
-              {
-               Print("Error: Weights array is smaller than expected");
-               return;
-              }
-            m_weights[layer][i][j] = weights[index++];
-           }
-        }
+      Print("Error: Weights array size mismatch");
+      return;
      }
+   ArrayCopy(m_weights, weights);
   }
 
 //+------------------------------------------------------------------+
@@ -116,19 +127,12 @@ void NeuralNetwork::SetWeights(double &weights[])
 //+------------------------------------------------------------------+
 void NeuralNetwork::SetBiases(double &biases[])
   {
-   int index = 0;
-   for(int layer = 0; layer < m_numLayers - 1; layer++)
+   if(ArraySize(biases) != ArraySize(m_biases))
      {
-      for(int i = 0; i < m_layerSizes[layer+1]; i++)
-        {
-         if(index >= ArraySize(biases))
-           {
-            Print("Error: Biases array is smaller than expected");
-            return;
-           }
-         m_biases[layer][i] = biases[index++];
-        }
+      Print("Error: Biases array size mismatch");
+      return;
      }
+   ArrayCopy(m_biases, biases);
   }
 
 //+------------------------------------------------------------------+
@@ -142,10 +146,14 @@ void NeuralNetwork::FeedForward(double &inputs[])
       return;
      }
    
+   int neuronIndex = 0;
+   int weightIndex = 0;
+   int biasIndex = 0;
+   
    // Set input layer
    for(int i = 0; i < m_layerSizes[0]; i++)
      {
-      m_neurons[0][i] = inputs[i];
+      m_neurons[neuronIndex++] = inputs[i];
      }
    
    // Feed forward through hidden layers and output layer
@@ -156,12 +164,26 @@ void NeuralNetwork::FeedForward(double &inputs[])
          double sum = 0;
          for(int j = 0; j < m_layerSizes[layer-1]; j++)
            {
-            sum += m_neurons[layer-1][j] * m_weights[layer-1][i][j];
+            sum += m_neurons[neuronIndex - m_layerSizes[layer-1] + j] * m_weights[weightIndex++];
            }
-         sum += m_biases[layer-1][i];
-         m_neurons[layer][i] = Activate(sum);
+         sum += m_biases[biasIndex++];
+         
+         if(layer == m_numLayers - 1)
+           {
+            // Output layer
+            m_neurons[neuronIndex++] = sum; // Linear activation for output layer
+           }
+         else
+           {
+            // Hidden layer
+            m_neurons[neuronIndex++] = ActivateHidden(sum);
+           }
         }
      }
+   
+   // Apply softmax to output layer
+   int outputLayerStart = ArraySize(m_neurons) - m_layerSizes[m_numLayers - 1];
+   ActivateOutput(m_neurons, m_layerSizes[m_numLayers - 1], outputLayerStart);
   }
 
 //+------------------------------------------------------------------+
@@ -170,14 +192,17 @@ void NeuralNetwork::FeedForward(double &inputs[])
 void NeuralNetwork::GetOutputs(double &outputs[])
   {
    int outputLayer = m_numLayers - 1;
+   int outputStart = ArraySize(m_neurons) - m_layerSizes[outputLayer];
+   
    if(ArrayResize(outputs, m_layerSizes[outputLayer]) != m_layerSizes[outputLayer])
      {
       Print("Error: Failed to resize outputs array");
       return;
      }
+   
    for(int i = 0; i < m_layerSizes[outputLayer]; i++)
      {
-      outputs[i] = m_neurons[outputLayer][i];
+      outputs[i] = m_neurons[outputStart + i];
      }
   }
 
@@ -190,20 +215,9 @@ void NeuralNetwork::BuildModel(int &layerSizes[], int numLayers)
      {
       double weights[];
       double biases[];
-      int totalWeights = 0;
-      int totalBiases = 0;
       
-      for(int i = 0; i < numLayers - 1; i++)
-        {
-         totalWeights += layerSizes[i] * layerSizes[i+1];
-         totalBiases += layerSizes[i+1];
-        }
-      
-      if(ArrayResize(weights, totalWeights) != totalWeights || ArrayResize(biases, totalBiases) != totalBiases)
-        {
-         Print("Error: Failed to resize weights or biases array");
-         return;
-        }
+      ArrayResize(weights, ArraySize(m_weights));
+      ArrayResize(biases, ArraySize(m_biases));
       
       int weightIndex = 0;
       int biasIndex = 0;
@@ -234,19 +248,49 @@ void NeuralNetwork::BuildModel(int &layerSizes[], int numLayers)
   }
 
 //+------------------------------------------------------------------+
-//| Activation function (ReLU)                                       |
+//| Activation function for hidden layers (Hyperbolic Tangent)       |
 //+------------------------------------------------------------------+
-double NeuralNetwork::Activate(double x)
+double NeuralNetwork::ActivateHidden(double x)
   {
-   return MathMax(0, x);
+   return MathTanh(x);
   }
 
 //+------------------------------------------------------------------+
-//| Derivative of activation function (ReLU)                         |
+//| Derivative of activation function for hidden layers              |
 //+------------------------------------------------------------------+
-double NeuralNetwork::ActivateDerivative(double x)
+double NeuralNetwork::ActivateHiddenDerivative(double x)
   {
-   return x > 0 ? 1 : 0;
+   double tanh = MathTanh(x);
+   return 1 - tanh * tanh;
+  }
+
+//+------------------------------------------------------------------+
+//| Activation function for output layer (Softmax)                   |
+//+------------------------------------------------------------------+
+void NeuralNetwork::ActivateOutput(double &x[], int size, int startIndex)
+  {
+   double max = x[ArrayMaximum(x, startIndex, size)];
+   double sum = 0;
+   for(int i = 0; i < size; i++)
+     {
+      x[startIndex + i] = MathExp(x[startIndex + i] - max);
+      sum += x[startIndex + i];
+     }
+   for(int i = 0; i < size; i++)
+     {
+      x[startIndex + i] /= sum;
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Derivative of activation function for output layer               |
+//+------------------------------------------------------------------+
+void NeuralNetwork::ActivateOutputDerivative(double &x[], double &result[], int size)
+  {
+   for(int i = 0; i < size; i++)
+     {
+      result[i] = x[i] * (1 - x[i]);
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -257,7 +301,8 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
    FeedForward(inputs);
    
    int outputLayer = m_numLayers - 1;
-   double errors[MAX_LAYERS][MAX_NEURONS];
+   double errors[];
+   ArrayResize(errors, ArraySize(m_neurons));
    
    if(ArraySize(targets) < m_layerSizes[outputLayer])
      {
@@ -265,11 +310,17 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
       return;
      }
    
+   int neuronIndex = ArraySize(m_neurons) - m_layerSizes[outputLayer];
+   int weightIndex = ArraySize(m_weights) - m_layerSizes[outputLayer] * m_layerSizes[outputLayer - 1];
+   int biasIndex = ArraySize(m_biases) - m_layerSizes[outputLayer];
+   
    // Calculate output layer errors
+   double outputDerivatives[];
+   ArrayResize(outputDerivatives, m_layerSizes[outputLayer]);
+   ActivateOutputDerivative(m_neurons, outputDerivatives, m_layerSizes[outputLayer]);
    for(int i = 0; i < m_layerSizes[outputLayer]; i++)
      {
-      double error = targets[i] - m_neurons[outputLayer][i];
-      errors[outputLayer][i] = error * ActivateDerivative(m_neurons[outputLayer][i]);
+      errors[neuronIndex + i] = (targets[i] - m_neurons[neuronIndex + i]) * outputDerivatives[i];
      }
    
    // Backpropagate errors
@@ -278,27 +329,34 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
       for(int i = 0; i < m_layerSizes[layer]; i++)
         {
          // Update biases
-         m_biases[layer-1][i] += learningRate * errors[layer][i];
+         m_biases[biasIndex + i] += learningRate * errors[neuronIndex + i];
          
          // Update weights
          for(int j = 0; j < m_layerSizes[layer-1]; j++)
            {
-            m_weights[layer-1][i][j] += learningRate * errors[layer][i] * m_neurons[layer-1][j];
+            m_weights[weightIndex + i * m_layerSizes[layer-1] + j] += learningRate * errors[neuronIndex + i] * m_neurons[neuronIndex - m_layerSizes[layer-1] + j];
            }
         }
       
       // Calculate errors for the previous layer
       if(layer > 1)
         {
+         int prevNeuronIndex = neuronIndex - m_layerSizes[layer-1];
+         int prevWeightIndex = weightIndex - m_layerSizes[layer-1] * m_layerSizes[layer-2];
+         
          for(int j = 0; j < m_layerSizes[layer-1]; j++)
            {
             double error = 0;
             for(int i = 0; i < m_layerSizes[layer]; i++)
               {
-               error += errors[layer][i] * m_weights[layer-1][i][j];
+               error += errors[neuronIndex + i] * m_weights[weightIndex + i * m_layerSizes[layer-1] + j];
               }
-            errors[layer-1][j] = error * ActivateDerivative(m_neurons[layer-1][j]);
+            errors[prevNeuronIndex + j] = error * ActivateHiddenDerivative(m_neurons[prevNeuronIndex + j]);
            }
+         
+         neuronIndex = prevNeuronIndex;
+         weightIndex = prevWeightIndex;
+         biasIndex -= m_layerSizes[layer-1];
         }
      }
   }
@@ -311,6 +369,9 @@ void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, doubl
    int inputSize = ArraySize(inputs) / m_layerSizes[0];
    int targetSize = ArraySize(targets) / m_layerSizes[m_numLayers-1];
    
+   Print("Starting training with ", inputSize, " samples, ", epochs, " epochs, learning rate ", learningRate, ", and batch size ", batchSize);
+   Print("Input size: ", ArraySize(inputs), ", Target size: ", ArraySize(targets));
+   
    if(inputSize != targetSize)
      {
       Print("Error: Number of input samples does not match number of target samples");
@@ -318,14 +379,18 @@ void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, doubl
      }
    
    int numBatches = (int)MathCeil((double)inputSize / batchSize);
+   Print("Number of batches per epoch: ", numBatches);
    
    for(int epoch = 0; epoch < epochs; epoch++)
      {
+      double totalLoss = 0.0;
       for(int batch = 0; batch < numBatches; batch++)
         {
          int startIdx = batch * batchSize;
          int endIdx = MathMin(startIdx + batchSize, inputSize);
          int batchInputSize = endIdx - startIdx;
+         
+         Print("Processing batch ", batch + 1, " of ", numBatches, " in epoch ", epoch + 1);
          
          double batchInputs[];
          double batchTargets[];
@@ -350,14 +415,35 @@ void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, doubl
            }
          
          BackPropagate(batchInputs, batchTargets, learningRate);
+         
+         // Calculate loss for this batch
+         double outputs[];
+         GetOutputs(outputs);
+         double batchLoss = CrossEntropyError(batchTargets, outputs);
+         totalLoss += batchLoss;
+         
+         Print("Batch ", batch + 1, " loss: ", DoubleToString(batchLoss, 6));
+         
+         // Print first input and output of each batch
+         if(ArraySize(batchInputs) > 0 && ArraySize(outputs) > 0)
+           {
+            Print("First input of batch: ", DoubleToString(batchInputs[0], 6));
+            Print("First output of batch: ", DoubleToString(outputs[0], 6));
+           }
         }
+      
+      // Calculate average loss for this epoch
+      double avgLoss = totalLoss / numBatches;
+      
+      Print("Epoch ", epoch + 1, " completed. Average loss: ", DoubleToString(avgLoss, 6));
       
       if(epoch % 100 == 0)  // Print every 100 epochs
         {
-         Print("Epoch ", epoch, ":");
-         PrintWeights();
+         Print("Epoch ", epoch, ": Loss = ", DoubleToString(avgLoss, 6));
         }
      }
+   
+   Print("Training completed.");
   }
 
 //+------------------------------------------------------------------+
@@ -365,6 +451,7 @@ void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, doubl
 //+------------------------------------------------------------------+
 void NeuralNetwork::PrintWeights()
   {
+   int weightIndex = 0;
    for(int layer = 0; layer < m_numLayers - 1; layer++)
      {
       Print("Layer ", layer, " weights:");
@@ -373,7 +460,7 @@ void NeuralNetwork::PrintWeights()
          string weightStr = "";
          for(int j = 0; j < m_layerSizes[layer]; j++)
            {
-            weightStr += DoubleToString(m_weights[layer][i][j], 4) + " ";
+            weightStr += DoubleToString(m_weights[weightIndex++], 4) + " ";
            }
          Print("  Neuron ", i, ": ", weightStr);
         }
@@ -381,16 +468,15 @@ void NeuralNetwork::PrintWeights()
   }
 
 //+------------------------------------------------------------------+
-//| Mean Squared Error                                               |
+//| Cross Entropy Error                                              |
 //+------------------------------------------------------------------+
-double NeuralNetwork::MeanSquaredError(double &targets[], double &outputs[])
+double NeuralNetwork::CrossEntropyError(double &targets[], double &outputs[])
   {
    double sum = 0;
-   int size = ArraySize(targets);
+   int size = MathMin(ArraySize(targets), ArraySize(outputs));
    for(int i = 0; i < size; i++)
      {
-      double error = targets[i] - outputs[i];
-      sum += error * error;
+      sum += targets[i] * MathLog(MathMax(outputs[i], 1e-15));
      }
-   return sum / size;
+   return -sum / size;
   }
