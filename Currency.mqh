@@ -23,17 +23,17 @@ private:
    int outputNeurons;
    int trainingEpochs;
    double learningRate;
-   int batchSize;
    string _symbolName;
    double _lotSize;
    double _closeInProfit;
    CTrade _trade;
    CPositionInfo _myPositionInfo;
    CHashMap<ulong, double> previousProfits;
+   int batchSize;
 
 public:
-   Currency(int &layers[], int numLayers, int inpTrainingEpochs, double inpLearningRate, int inpBatchSize,
-            string symbolName, double lotSize, double closeInProfit)
+   Currency(int &layers[], int numLayers, int inpTrainingEpochs, double inpLearningRate,
+            string symbolName, double lotSize, double closeInProfit, int inpBatchSize)
    {
       if(numLayers < 2)
       {
@@ -45,10 +45,10 @@ public:
       outputNeurons = layers[numLayers-1];
       trainingEpochs = inpTrainingEpochs;
       learningRate = inpLearningRate;
-      batchSize = inpBatchSize;
       _symbolName = symbolName;
       _lotSize = lotSize;
       _closeInProfit = closeInProfit;
+      batchSize = inpBatchSize;
 
       // Initialize the neural network
       if(!nn.Initialize(layers, numLayers))
@@ -77,6 +77,9 @@ public:
       double targets[];
       ArrayResize(inputs, inputNeurons * batchSize);
       ArrayResize(targets, outputNeurons * batchSize);
+      // Initialize targets with -555
+      ArrayInitialize(targets, 0);
+      ArrayInitialize(inputs, -444);
 
       // Get historical data for training
       double macd_main[];
@@ -89,19 +92,20 @@ public:
       ArraySetAsSeries(rsi, true);
       ArraySetAsSeries(stoch_main, true);
       ArraySetAsSeries(stoch_signal, true);
-      if (CopyBuffer(handle_macd, 0, 1, inputNeurons * batchSize / 5, macd_main) <= 0 ||
-            CopyBuffer(handle_macd, 1, 1, inputNeurons * batchSize / 5, macd_signal) <= 0 ||
-            CopyBuffer(handle_rsi, 0, 1, inputNeurons * batchSize / 5, rsi) <= 0 ||
-            CopyBuffer(handle_stoch, 0, 1, inputNeurons * batchSize / 5, stoch_main) <= 0 ||
-            CopyBuffer(handle_stoch, 1, 1, inputNeurons * batchSize / 5, stoch_signal) <= 0)
+      if (CopyBuffer(handle_macd, 0, 1, inputNeurons / 5 * batchSize, macd_main) <= 0 ||
+            CopyBuffer(handle_macd, 1, 1, inputNeurons / 5 * batchSize, macd_signal) <= 0 ||
+            CopyBuffer(handle_rsi, 0, 1, inputNeurons / 5 * batchSize, rsi) <= 0 ||
+            CopyBuffer(handle_stoch, 0, 1, inputNeurons / 5 * batchSize, stoch_main) <= 0 ||
+            CopyBuffer(handle_stoch, 1, 1, inputNeurons / 5 * batchSize, stoch_signal) <= 0)
       {
          Print("Error copying indicator buffers in Init: ", GetLastError());
          return false;
       }
-      
+
       // Print the indicator values
       string macd_main_str = "", macd_signal_str = "", rsi_str = "", stoch_main_str = "", stoch_signal_str = "";
-      for (int i = 0; i < ArraySize(macd_main) && i < 10; i++) {
+      for (int i = 0; i < ArraySize(macd_main) && i < 10; i++)
+      {
          macd_main_str += (string)macd_main[i] + " ";
          macd_signal_str += (string)macd_signal[i] + " ";
          rsi_str += (string)rsi[i] + " ";
@@ -114,57 +118,47 @@ public:
       Print("Stochastic Main: ", stoch_main_str);
       Print("Stochastic Signal: ", stoch_signal_str);
 
-      // Prepare inputs and targets
-      double d1RSI = -1.0;
-      double d2RSI = 1.0;
-      double x_minRSI_H4 = rsi[ArrayMinimum(rsi)];
-      double x_maxRSI_H4 = rsi[ArrayMaximum(rsi)];
-      double diff_min_max_RSI_H4 = x_maxRSI_H4 - x_minRSI_H4;
-      if (diff_min_max_RSI_H4 == 0)
+ 
+      for (int b = 0; b < batchSize; b++)
       {
-         diff_min_max_RSI_H4 = 0.000001;
-      }
-
-      double d1MACD = -1.0;
-      double d2MACD = 1.0;
-      double x_minMACD_H4 = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
-      double x_maxMACD_H4 = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-
-      double d1Stoch = -1.0;
-      double d2Stoch = 1.0;
-      double x_minStoch_H4 = MathMin(stoch_main[ArrayMinimum(stoch_main)], stoch_signal[ArrayMinimum(stoch_signal)]);
-      double x_maxStoch_H4 = MathMax(stoch_main[ArrayMaximum(stoch_main)], stoch_signal[ArrayMaximum(stoch_signal)]);
-
-      for (int i = 0; i < batchSize; i++)
-      {
-         int index = i * 5;
-         
-         if (index > 314 )
+         for (int i = 0; i < inputNeurons / 5; i++)
          {
-            Print("sono index: ", index);
-         }
-         if (index + 4 < ArraySize(inputs))
-         {
-            inputs[index] = (((macd_main[i] - x_minMACD_H4) * (d2MACD - d1MACD)) / (x_maxMACD_H4 - x_minMACD_H4)) + d1MACD;
-            inputs[index + 1] = (((macd_signal[i] - x_minMACD_H4) * (d2MACD - d1MACD)) / (x_maxMACD_H4 - x_minMACD_H4)) + d1MACD;
-            inputs[index + 2] = (((rsi[i] - x_minRSI_H4) * (d2RSI - d1RSI)) / diff_min_max_RSI_H4) + d1RSI;
-            inputs[index + 3] = (((stoch_main[i] - x_minStoch_H4) * (d2Stoch - d1Stoch)) / (x_maxStoch_H4 - x_minStoch_H4)) + d1Stoch;
-            inputs[index + 4] = (((stoch_signal[i] - x_minStoch_H4) * (d2Stoch - d1Stoch)) / (x_maxStoch_H4 - x_minStoch_H4)) + d1Stoch;
-         }
-
-         // Simple target: if the next MACD histogram is positive and RSI > 50, set target to [0, 1],
-         // if negative and RSI < 50 [1, 0]
-         int targetIndex = i * outputNeurons;
-         if(targetIndex + 1 < ArraySize(targets))  // Ensure we're not going out of bounds
-         {
-            if(i < ArraySize(macd_main) && i < ArraySize(macd_signal) && i < ArraySize(rsi))
+            int index = b * inputNeurons + i * 5;
+            if (index + 4 < ArraySize(inputs))
             {
-               if(macd_main[i] > macd_signal[i] && rsi[i] > 70 )
+               // Normalize MACD
+               double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
+               double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
+               inputs[index] = (macd_main[b * inputNeurons / 5 + i] - macd_min) / (macd_max - macd_min);
+               inputs[index + 1] = (macd_signal[b * inputNeurons / 5 + i] - macd_min) / (macd_max - macd_min);
+               
+               // Normalize RSI (already in range 0-100)
+               inputs[index + 2] = rsi[b * inputNeurons / 5 + i] / 100.0;
+               
+               // Normalize Stochastic (already in range 0-100)
+               inputs[index + 3] = stoch_main[b * inputNeurons / 5 + i] / 100.0;
+               inputs[index + 4] = stoch_signal[b * inputNeurons / 5 + i] / 100.0;
+            }
+
+            // Simple target: if the next MACD histogram is positive and RSI > 50, set target to [0, 1],
+            // if negative and RSI < 50 [1, 0]
+            int targetIndex = b * outputNeurons;
+            if (b * inputNeurons / 5 + i < ArraySize(macd_main) && 
+                b * inputNeurons / 5 + i < ArraySize(macd_signal) && 
+                b * inputNeurons / 5 + i < ArraySize(rsi) && 
+                b * inputNeurons / 5 + i < ArraySize(stoch_main) &&
+                b * inputNeurons / 5 + i < ArraySize(stoch_signal))
+            {
+               if (macd_main[b * inputNeurons / 5 + i] > macd_signal[b * inputNeurons / 5 + i] && 
+                   rsi[b * inputNeurons / 5 + i] > 70 && 
+                   stoch_main[b * inputNeurons / 5 + i] > stoch_signal[b * inputNeurons / 5 + i])
                {
                   targets[targetIndex] = 0.0;
                   targets[targetIndex + 1] = 1.0;
                }
-               else if(macd_main[i] < macd_signal[i] && rsi[i] < 30)
+               else if (macd_main[b * inputNeurons / 5 + i] < macd_signal[b * inputNeurons / 5 + i] && 
+                        rsi[b * inputNeurons / 5 + i] < 30 && 
+                        stoch_main[b * inputNeurons / 5 + i] < stoch_signal[b * inputNeurons / 5 + i])
                {
                   targets[targetIndex] = 1.0;
                   targets[targetIndex + 1] = 0.0;
@@ -173,7 +167,7 @@ public:
          }
       }
 
-      // Train the neural network
+      // Train the neural network with batch
       nn.Train(inputs, targets, trainingEpochs, learningRate, batchSize);
 
       Print("Neural network training completed.");
@@ -181,7 +175,7 @@ public:
       return true;
    }
 
-   void Run()
+   void Run(double accountMargin, double maxRiskAmount)
    {
       // Prepare input data
       double inputs[];
@@ -205,36 +199,22 @@ public:
          return;
       }
 
-      double d1RSI = -1.0;
-      double d2RSI = 1.0;
-      double x_minRSI_H4 = rsi[ArrayMinimum(rsi)];
-      double x_maxRSI_H4 = rsi[ArrayMaximum(rsi)];
-      double diff_min_max_RSI_H4 = x_maxRSI_H4 - x_minRSI_H4;
-      if (diff_min_max_RSI_H4 == 0)
-      {
-         diff_min_max_RSI_H4 = 0.000001;
-      }
-
-      double d1MACD = -1.0;
-      double d2MACD = 1.0;
-      double x_minMACD_H4 = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
-      double x_maxMACD_H4 = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-
-      double d1Stoch = -1.0;
-      double d2Stoch = 1.0;
-      double x_minStoch_H4 = MathMin(stoch_main[ArrayMinimum(stoch_main)], stoch_signal[ArrayMinimum(stoch_signal)]);
-      double x_maxStoch_H4 = MathMax(stoch_main[ArrayMaximum(stoch_main)], stoch_signal[ArrayMaximum(stoch_signal)]);
-
       for (int i = 0; i < inputNeurons / 5; i++)
       {
          int index = i * 5;
          if (index + 4 < ArraySize(inputs))
          {
-            inputs[index] = (((macd_main[i] - x_minMACD_H4) * (d2MACD - d1MACD)) / (x_maxMACD_H4 - x_minMACD_H4)) + d1MACD;
-            inputs[index + 1] = (((macd_signal[i] - x_minMACD_H4) * (d2MACD - d1MACD)) / (x_maxMACD_H4 - x_minMACD_H4)) + d1MACD;
-            inputs[index + 2] = (((rsi[i] - x_minRSI_H4) * (d2RSI - d1RSI)) / diff_min_max_RSI_H4) + d1RSI;
-            inputs[index + 3] = (((stoch_main[i] - x_minStoch_H4) * (d2Stoch - d1Stoch)) / (x_maxStoch_H4 - x_minStoch_H4)) + d1Stoch;
-            inputs[index + 4] = (((stoch_signal[i] - x_minStoch_H4) * (d2Stoch - d1Stoch)) / (x_maxStoch_H4 - x_minStoch_H4)) + d1Stoch;
+            double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
+            double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
+            inputs[index] = (macd_main[i] - macd_min) / (macd_max - macd_min);
+            inputs[index + 1] = (macd_signal[i] - macd_min) / (macd_max - macd_min);
+            
+            // Normalize RSI (already in range 0-100)
+            inputs[index + 2] = rsi[i] / 100.0;
+            
+            // Normalize Stochastic (already in range 0-100)
+            inputs[index + 3] = stoch_main[i] / 100.0;
+            inputs[index + 4] = stoch_signal[i] / 100.0;
          }
       }
 
@@ -248,16 +228,16 @@ public:
       // Make trading decision based on outputs
       if(ArraySize(outputs) >= 2)
       {
-         Print("outputs[0]: ", outputs[0], " outputs[1] ", outputs[1]);
-
-         if(outputs[0] > outputs[1] && outputs[0] > 0.6 && GlobaltimeOutExpiredSell)
+         // Print("outputs[0]: ", outputs[0], " outputs[1] ", outputs[1]);
+         // Print("Current risk: ", accountMargin, " Max risk amount: ", maxRiskAmount);
+         if(outputs[0] > outputs[1] && outputs[0] > 0.6 && GlobaltimeOutExpiredSell && accountMargin < maxRiskAmount)
          {
             // Consider opening a sell position
             //Print("Sell signal: ", outputs[0], " > ", outputs[1]);
             openSellOrder();
             GlobaltimeOutExpiredSell = false;
          }
-         else if(outputs[1] > outputs[0] && outputs[1] > 0.6 && GlobaltimeOutExpiredBuy)
+         else if(outputs[1] > outputs[0] && outputs[1] > 0.6 && GlobaltimeOutExpiredBuy && accountMargin < maxRiskAmount)
          {
             // Consider opening a buy position
             //Print("Buy signal: ", outputs[1], " > ", outputs[0]);
@@ -306,7 +286,8 @@ public:
                }
             }
             singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-            if(singleProfit > _closeInProfit && singleProfit < previousProfit-3 )
+            //Print("_closeInProfit: ", _closeInProfit, ", singleProfit: ", singleProfit);
+            if(singleProfit > _closeInProfit)// && singleProfit < previousProfit-0.5 )
             {
                Print("ticket: ", ticket," singleProfit < previousProfit: ", singleProfit," < ",previousProfit-3 );
                if (_trade.PositionClose(ticket))
@@ -375,7 +356,7 @@ public:
    {
       int total=PositionsTotal();
       int count=0;
-      for(int cnt=0; cnt<=total; cnt++)
+      for(int cnt=0; cnt<total; cnt++)
       {
          if(PositionSelect(_symbolName))
          {
