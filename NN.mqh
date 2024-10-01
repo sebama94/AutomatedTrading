@@ -9,7 +9,7 @@
 #include <Arrays\ArrayString.mqh>
 
 #define MAX_LAYERS 10
-#define MAX_NEURONS 1024
+#define MAX_NEURONS 100000
 
 //+------------------------------------------------------------------+
 //| Neural Network Class                                             |
@@ -18,7 +18,7 @@ class NeuralNetwork
   {
 private:
    int               m_numLayers;
-   int               m_layerSizes[MAX_LAYERS];
+   int               m_layerSizes[];
    double            m_neurons[];
    double            m_weights[];
    double            m_biases[];
@@ -34,7 +34,7 @@ public:
    void              FeedForward(double &inputs[]);
    void              GetOutputs(double &outputs[]);
    void              BuildModel(int &layerSizes[], int numLayers);
-   void              Train(double &inputs[], double &targets[], int epochs, double learningRate, int batchSize);
+   void              Train(double &inputs[], double &targets[], int epochs, double learningRate);
    void              PrintWeights();
    
 private:
@@ -47,6 +47,7 @@ private:
    string            DoubleArrayToString(const double &arr[], int start=0, int count=WHOLE_ARRAY);
    void              ValidateInputs(double &inputs[], double &targets[]);
    bool              AreInputsInRange(const double &inputs[]);
+   bool              AreTargetsInRange(const double &targets[]);
   };
 
 //+------------------------------------------------------------------+
@@ -81,7 +82,7 @@ bool NeuralNetwork::Initialize(int &layerSizes[], int numLayers)
      }
 
    m_numLayers = numLayers;
-   
+   ArrayResize(m_layerSizes, m_numLayers);
    int totalNeurons = 0;
    for(int i = 0; i < numLayers; i++)
      {
@@ -240,24 +241,19 @@ void NeuralNetwork::BuildModel(int &layerSizes[], int numLayers)
       {
          int fanIn = layerSizes[layer];
          int fanOut = layerSizes[layer + 1];
-         double scale = MathSqrt(2.0 / (fanIn + fanOut));
          
          for(int i = 0; i < fanOut; i++)
          {
             for(int j = 0; j < fanIn; j++)
             {
-               weights[weightIndex++] = scale * (2.0 * MathRand() / 32768.0 - 1.0);
+               weights[weightIndex++] = (MathRand() / 32768.0) * 0.01; // Scale down to small values
             }
-            biases[biasIndex++] = 0.0; // Initialize biases to zero
+            biases[biasIndex++] = 0;  // You can start biases at zero
          }
       }
       
       SetWeights(weights);
       SetBiases(biases);
-
-      // Debugging prints
-      Print("Initialized weights: ", DoubleArrayToString(weights));
-      Print("Initialized biases: ", DoubleArrayToString(biases));
    }
    else
    {
@@ -322,12 +318,18 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
       return;
      }
 
+   if(!AreTargetsInRange(targets))
+     {
+      Print("Error: Target values are out of range [0, 1]");
+      return;
+     }
+
    FeedForward(inputs);
 
    int outputLayer = m_numLayers - 1;
    double errors[];
    ArrayResize(errors, ArraySize(m_neurons));
-
+   
    if(ArraySize(targets) < m_layerSizes[outputLayer])
    {
       Print("Error: Targets array is smaller than the output layer size");
@@ -338,14 +340,15 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
    int weightIndex = ArraySize(m_weights) - m_layerSizes[outputLayer] * m_layerSizes[outputLayer - 1];
    int biasIndex = ArraySize(m_biases) - m_layerSizes[outputLayer];
 
-   // Calculate output layer errors
-   double outputDerivatives[];
-   ArrayResize(outputDerivatives, m_layerSizes[outputLayer]);
-   ActivateOutputDerivative(m_neurons, outputDerivatives, m_layerSizes[outputLayer]);
+   // Calculate output layer errors (using cross-entropy derivative)
    for(int i = 0; i < m_layerSizes[outputLayer]; i++)
    {
-      errors[neuronIndex + i] = (targets[i] - m_neurons[neuronIndex + i]) * outputDerivatives[i];
+      errors[neuronIndex + i] = m_neurons[neuronIndex + i] - targets[i];  
    }
+
+   // Print softmax output and target
+   Print("Softmax output: ", DoubleArrayToString(m_neurons, neuronIndex, m_layerSizes[outputLayer]));
+   Print("Target: ", DoubleArrayToString(targets, 0, m_layerSizes[outputLayer]));
 
    // Backpropagate errors
    for(int layer = outputLayer; layer > 0; layer--)
@@ -353,12 +356,12 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
       for(int i = 0; i < m_layerSizes[layer]; i++)
       {
          // Update biases
-         m_biases[biasIndex + i] += learningRate * errors[neuronIndex + i];
+         m_biases[biasIndex + i] -= learningRate * errors[neuronIndex + i];
 
          // Update weights
          for(int j = 0; j < m_layerSizes[layer-1]; j++)
          {
-            m_weights[weightIndex + i * m_layerSizes[layer-1] + j] += learningRate * errors[neuronIndex + i] * m_neurons[neuronIndex - m_layerSizes[layer-1] + j];
+            m_weights[weightIndex + i * m_layerSizes[layer-1] + j] -= learningRate * errors[neuronIndex + i] * m_neurons[neuronIndex - m_layerSizes[layer-1] + j];
          }
       }
 
@@ -383,21 +386,17 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
          biasIndex -= m_layerSizes[layer-1];
       }
    }
-
-   // Debugging prints
-   Print("Updated weights: ", DoubleArrayToString(m_weights));
-   Print("Updated biases: ", DoubleArrayToString(m_biases));
 }
 
 //+------------------------------------------------------------------+
 //| Train the neural network                                         |
 //+------------------------------------------------------------------+
-void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, double learningRate, int batchSize)
+void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, double learningRate)
 {
    int inputSize = ArraySize(inputs) / m_layerSizes[0];
    int targetSize = ArraySize(targets) / m_layerSizes[m_numLayers-1];
 
-   Print("Starting training with ", inputSize, " samples, ", epochs, " epochs, learning rate ", learningRate, ", and batch size ", batchSize);
+   Print("Starting training with ", inputSize, " samples, ", epochs, " epochs, learning rate ", learningRate);
    Print("Input size: ", ArraySize(inputs), ", Target size: ", ArraySize(targets));
 
    ValidateInputs(inputs, targets);
@@ -411,45 +410,40 @@ void NeuralNetwork::Train(double &inputs[], double &targets[], int epochs, doubl
    for(int epoch = 0; epoch < epochs; epoch++)
    {
       double totalLoss = 0.0;
-      for(int batch = 0; batch < inputSize; batch += batchSize)
+      for(int sample = 0; sample < inputSize; sample++)
       {
-         double batchInputs[];
-         double batchTargets[];
-         int actualBatchSize = MathMin(batchSize, inputSize - batch);
+         double sampleInputs[];
+         double sampleTargets[];
 
-         ArrayResize(batchInputs, actualBatchSize * m_layerSizes[0]);
-         ArrayResize(batchTargets, actualBatchSize * m_layerSizes[m_numLayers-1]);
+         ArrayResize(sampleInputs, m_layerSizes[0]);
+         ArrayResize(sampleTargets, m_layerSizes[m_numLayers-1]);
 
-         for(int i = 0; i < actualBatchSize; i++)
+         for(int j = 0; j < m_layerSizes[0]; j++)
          {
-            int sampleIndex = batch + i;
-            for(int j = 0; j < m_layerSizes[0]; j++)
-            {
-               batchInputs[i * m_layerSizes[0] + j] = inputs[sampleIndex * m_layerSizes[0] + j];
-            }
-            for(int j = 0; j < m_layerSizes[m_numLayers-1]; j++)
-            {
-               batchTargets[i * m_layerSizes[m_numLayers-1] + j] = targets[sampleIndex * m_layerSizes[m_numLayers-1] + j];
-            }
+            sampleInputs[j] = inputs[sample * m_layerSizes[0] + j];
+         }
+         for(int j = 0; j < m_layerSizes[m_numLayers-1]; j++)
+         {
+            sampleTargets[j] = targets[sample * m_layerSizes[m_numLayers-1] + j];
          }
 
-         BackPropagate(batchInputs, batchTargets, learningRate);
+         BackPropagate(sampleInputs, sampleTargets, learningRate);
 
-         // Calculate loss for this batch
+         // Calculate loss for this sample
          double outputs[];
          GetOutputs(outputs);
 
-         double batchLoss = CrossEntropyLoss(batchTargets, outputs);
-         totalLoss += batchLoss;
+         double sampleLoss = CrossEntropyLoss(sampleTargets, outputs);
+         totalLoss += sampleLoss;
 
-         if(batch % (batchSize * 10) == 0)
-         {
-            Print("Epoch ", epoch + 1, ", Batch ", batch / batchSize + 1, " - Loss: ", DoubleToString(batchLoss, 6));
-         }
+         // Print debug information for each sample
+         Print("Epoch ", epoch + 1, ", Sample ", sample + 1, " - Loss: ", DoubleToString(sampleLoss, 6));
+         Print("NN Output: ", DoubleArrayToString(outputs));
+         Print("Target: ", DoubleArrayToString(sampleTargets));
       }
 
       // Calculate average loss for this epoch
-      double avgLoss = totalLoss / (inputSize / batchSize);
+      double avgLoss = totalLoss / inputSize;
       Print("Epoch ", epoch + 1, " completed with average loss: ", DoubleToString(avgLoss, 6));
    }
 
@@ -478,7 +472,7 @@ void NeuralNetwork::PrintWeights()
   }
 
 //+------------------------------------------------------------------+
-//| Cross-Entropy Loss                                               |
+//| Cross Entropy Loss                                               |
 //+------------------------------------------------------------------+
 double NeuralNetwork::CrossEntropyLoss(double &targets[], double &outputs[])
 {
@@ -564,6 +558,22 @@ bool NeuralNetwork::AreInputsInRange(const double &inputs[])
    for(int i = 0; i < size; i++)
      {
       if(inputs[i] < -1 || inputs[i] > 1)
+        {
+         return false;
+        }
+     }
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| Check if targets are within the range [0, 1]                     |
+//+------------------------------------------------------------------+
+bool NeuralNetwork::AreTargetsInRange(const double &targets[])
+  {
+   int size = ArraySize(targets);
+   for(int i = 0; i < size; i++)
+     {
+      if(targets[i] < 0 || targets[i] > 1)
         {
          return false;
         }

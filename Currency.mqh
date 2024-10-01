@@ -19,6 +19,7 @@ private:
    int handle_macd;
    int handle_rsi;
    int handle_stoch;
+   int handle_adx;
    int inputNeurons;
    int outputNeurons;
    int trainingEpochs;
@@ -29,11 +30,11 @@ private:
    CTrade _trade;
    CPositionInfo _myPositionInfo;
    CHashMap<ulong, double> previousProfits;
-   int batchSize;
+   int _numberOfData;
 
 public:
    Currency(int &layers[], int numLayers, int inpTrainingEpochs, double inpLearningRate,
-            string symbolName, double lotSize, double closeInProfit, int inpBatchSize)
+            string symbolName, double lotSize, double closeInProfit, int numberOfData)
    {
       if(numLayers < 2)
       {
@@ -42,20 +43,15 @@ public:
       }
 
       inputNeurons = layers[0];
-      outputNeurons = layers[numLayers-1];
+      outputNeurons = 1; // Changed to 1 output
       trainingEpochs = inpTrainingEpochs;
       learningRate = inpLearningRate;
       _symbolName = symbolName;
       _lotSize = lotSize;
       _closeInProfit = closeInProfit;
-      batchSize = inpBatchSize;
-
+      _numberOfData = numberOfData;
       // Initialize the neural network
-      if(!nn.Initialize(layers, numLayers))
-      {
-         Print("Failed to initialize neural network");
-         return;
-      }
+      layers[numLayers-1] = 1; // Ensure the last layer has 1 neuron
       nn.BuildModel(layers, numLayers);
    }
 
@@ -65,7 +61,8 @@ public:
       handle_macd = iMACD(_symbolName, PERIOD_M30, 12, 26, 9, PRICE_CLOSE);
       handle_rsi = iRSI(_symbolName, PERIOD_M30, 14, PRICE_CLOSE);
       handle_stoch = iStochastic(_symbolName, PERIOD_M30, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-      if(handle_macd == INVALID_HANDLE || handle_rsi == INVALID_HANDLE || handle_stoch == INVALID_HANDLE)
+      handle_adx = iADX(_symbolName, PERIOD_M30, 14);
+      if(handle_macd == INVALID_HANDLE || handle_rsi == INVALID_HANDLE || handle_stoch == INVALID_HANDLE || handle_adx == INVALID_HANDLE)
       {
          Print("Failed to create indicators");
          return false;
@@ -75,10 +72,10 @@ public:
       // Prepare training data
       double inputs[];
       double targets[];
-      ArrayResize(inputs, inputNeurons * batchSize);
-      ArrayResize(targets, outputNeurons * batchSize);
-      // Initialize targets with -555
-      ArrayInitialize(targets, 0);
+      ArrayResize(inputs, inputNeurons);
+      ArrayResize(targets, 1); // Changed to 1 output
+      // Initialize targets and inputs with 0
+      ArrayInitialize(targets, -555);
       ArrayInitialize(inputs, -444);
 
       // Get historical data for training
@@ -87,88 +84,77 @@ public:
       double rsi[];
       double stoch_main[];
       double stoch_signal[];
+      double adx[];
       ArraySetAsSeries(macd_main, true);
       ArraySetAsSeries(macd_signal, true);
       ArraySetAsSeries(rsi, true);
       ArraySetAsSeries(stoch_main, true);
       ArraySetAsSeries(stoch_signal, true);
-      if (CopyBuffer(handle_macd, 0, 1, inputNeurons / 5 * batchSize, macd_main) <= 0 ||
-            CopyBuffer(handle_macd, 1, 1, inputNeurons / 5 * batchSize, macd_signal) <= 0 ||
-            CopyBuffer(handle_rsi, 0, 1, inputNeurons / 5 * batchSize, rsi) <= 0 ||
-            CopyBuffer(handle_stoch, 0, 1, inputNeurons / 5 * batchSize, stoch_main) <= 0 ||
-            CopyBuffer(handle_stoch, 1, 1, inputNeurons / 5 * batchSize, stoch_signal) <= 0)
+      ArraySetAsSeries(adx, true);
+      int requiredSamples = _numberOfData * inputNeurons / 6;
+      if (CopyBuffer(handle_macd, 0, 1, requiredSamples, macd_main) <= 0 ||
+          CopyBuffer(handle_macd, 1, 1, requiredSamples, macd_signal) <= 0 ||
+          CopyBuffer(handle_rsi, 0, 1, requiredSamples, rsi) <= 0 ||
+          CopyBuffer(handle_stoch, MAIN_LINE, 1, requiredSamples, stoch_main) <= 0 ||
+          CopyBuffer(handle_stoch, SIGNAL_LINE, 1, requiredSamples, stoch_signal) <= 0 ||
+          CopyBuffer(handle_adx, 0, 1, requiredSamples, adx) <= 0)
       {
-         Print("Error copying indicator buffers in Init: ", GetLastError());
+         Print("Error copying indicator buffers in Init. Error code: ", GetLastError());
          return false;
       }
 
-      // Print the indicator values
-      string macd_main_str = "", macd_signal_str = "", rsi_str = "", stoch_main_str = "", stoch_signal_str = "";
-      for (int i = 0; i < ArraySize(macd_main) && i < 10; i++)
+      int totalSamples = ArraySize(macd_main); 
+      int totalInputs = totalSamples * 6;
+      int totalTargets = totalInputs/inputNeurons;
+      
+      if (!ArrayResize(inputs, totalInputs) || !ArrayResize(targets, totalTargets))
       {
-         macd_main_str += (string)macd_main[i] + " ";
-         macd_signal_str += (string)macd_signal[i] + " ";
-         rsi_str += (string)rsi[i] + " ";
-         stoch_main_str += (string)stoch_main[i] + " ";
-         stoch_signal_str += (string)stoch_signal[i] + " ";
+         Print("Error resizing arrays. Error code: ", GetLastError());
+         return false;
       }
-      Print("MACD Main: ", macd_main_str);
-      Print("MACD Signal: ", macd_signal_str);
-      Print("RSI: ", rsi_str);
-      Print("Stochastic Main: ", stoch_main_str);
-      Print("Stochastic Signal: ", stoch_signal_str);
 
- 
-      for (int b = 0; b < batchSize; b++)
+      for (int i = 0; i < totalSamples; i++)
       {
-         for (int i = 0; i < inputNeurons / 5; i++)
+         int index = i * 6;
+         if (index + 5 < ArraySize(inputs))
          {
-            int index = b * inputNeurons + i * 5;
-            if (index + 4 < ArraySize(inputs))
-            {
-               // Normalize MACD
-               double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
-               double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-               inputs[index] = (macd_main[b * inputNeurons / 5 + i] - macd_min) / (macd_max - macd_min);
-               inputs[index + 1] = (macd_signal[b * inputNeurons / 5 + i] - macd_min) / (macd_max - macd_min);
-               
-               // Normalize RSI (already in range 0-100)
-               inputs[index + 2] = rsi[b * inputNeurons / 5 + i] / 100.0;
-               
-               // Normalize Stochastic (already in range 0-100)
-               inputs[index + 3] = stoch_main[b * inputNeurons / 5 + i] / 100.0;
-               inputs[index + 4] = stoch_signal[b * inputNeurons / 5 + i] / 100.0;
-            }
+            // Normalize MACD to range [-1, 1]
+            double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
+            double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
+            inputs[index] = 2 * (macd_main[i] - macd_min) / (macd_max - macd_min) - 1;
+            inputs[index + 1] = 2 * (macd_signal[i] - macd_min) / (macd_max - macd_min) - 1;
+            // Normalize RSI to range [-1, 1]
+            inputs[index + 2] = 2 * (rsi[i] / 100.0) - 1;
+            // Normalize Stochastic to range [-1, 1]
+            inputs[index + 3] = 2 * (stoch_main[i] / 100.0) - 1;
+            inputs[index + 4] = 2 * (stoch_signal[i] / 100.0) - 1;
+            // Normalize ADX to range [-1, 1]
+            inputs[index + 5] = 2 * (adx[i] / 100.0) - 1;
+         }
 
-            // Simple target: if the next MACD histogram is positive and RSI > 50, set target to [0, 1],
-            // if negative and RSI < 50 [1, 0]
-            int targetIndex = b * outputNeurons;
-            if (b * inputNeurons / 5 + i < ArraySize(macd_main) && 
-                b * inputNeurons / 5 + i < ArraySize(macd_signal) && 
-                b * inputNeurons / 5 + i < ArraySize(rsi) && 
-                b * inputNeurons / 5 + i < ArraySize(stoch_main) &&
-                b * inputNeurons / 5 + i < ArraySize(stoch_signal))
+         // Simple target: if conditions for buy are met, set target to 1, if conditions for sell are met, set target to -1, else 0
+         if (i < ArraySize(adx) - 1 && i < ArraySize(macd_main) - 1 && i < ArraySize(macd_signal) - 1 && i < ArraySize(rsi) - 1 && i < ArraySize(stoch_main) - 1 && i < ArraySize(stoch_signal) - 1)
+         {
+            int targetIndex = i;
+            if (targetIndex < ArraySize(targets))  // Add this check to prevent array out of range error
             {
-               if (macd_main[b * inputNeurons / 5 + i] > macd_signal[b * inputNeurons / 5 + i] && 
-                   rsi[b * inputNeurons / 5 + i] > 70 && 
-                   stoch_main[b * inputNeurons / 5 + i] > stoch_signal[b * inputNeurons / 5 + i])
+               if (macd_main[i] > macd_signal[i] && rsi[i] > 70 && stoch_main[i] > stoch_signal[i] && adx[i] > 25 && stoch_main[i] > 80 )
                {
-                  targets[targetIndex] = 0.0;
-                  targets[targetIndex + 1] = 1.0;
+                  targets[targetIndex] = 1.0; // Buy signal
                }
-               else if (macd_main[b * inputNeurons / 5 + i] < macd_signal[b * inputNeurons / 5 + i] && 
-                        rsi[b * inputNeurons / 5 + i] < 30 && 
-                        stoch_main[b * inputNeurons / 5 + i] < stoch_signal[b * inputNeurons / 5 + i])
+               else if (macd_main[i] < macd_signal[i] && rsi[i] < 30 && stoch_main[i] < stoch_signal[i] && adx[i] > 25 && stoch_main[i] < 20 )
                {
-                  targets[targetIndex] = 1.0;
-                  targets[targetIndex + 1] = 0.0;
+                  targets[targetIndex] = -1.0; // Sell signal
+               }
+               else
+               {
+                  targets[targetIndex] = 0.0; // No trade signal
                }
             }
          }
       }
 
-      // Train the neural network with batch
-      nn.Train(inputs, targets, trainingEpochs, learningRate, batchSize);
+      nn.Train(inputs, targets, trainingEpochs, learningRate);
 
       Print("Neural network training completed.");
 
@@ -182,80 +168,83 @@ public:
       ArrayResize(inputs, inputNeurons);
 
       // Get indicator values
-      double macd_main[], macd_signal[], rsi[], stoch_main[], stoch_signal[];
+      double macd_main[], macd_signal[], rsi[], stoch_main[], stoch_signal[], adx[];
       ArraySetAsSeries(macd_main, true);
       ArraySetAsSeries(macd_signal, true);
       ArraySetAsSeries(rsi, true);
       ArraySetAsSeries(stoch_main, true);
       ArraySetAsSeries(stoch_signal, true);
+      ArraySetAsSeries(adx, true);
 
-      if (CopyBuffer(handle_macd, 0, 0, inputNeurons / 5, macd_main) <= 0 ||
-            CopyBuffer(handle_macd, 1, 0, inputNeurons / 5, macd_signal) <= 0 ||
-            CopyBuffer(handle_rsi, 0, 0, inputNeurons / 5, rsi) <= 0 ||
-            CopyBuffer(handle_stoch, 0, 0, inputNeurons / 5, stoch_main) <= 0 ||
-            CopyBuffer(handle_stoch, 1, 0, inputNeurons / 5, stoch_signal) <= 0)
+      if (CopyBuffer(handle_macd, 0, 0, inputNeurons / 6, macd_main) <= 0 ||
+            CopyBuffer(handle_macd, 1, 0, inputNeurons / 6, macd_signal) <= 0 ||
+            CopyBuffer(handle_rsi, 0, 0, inputNeurons / 6, rsi) <= 0 ||
+            CopyBuffer(handle_stoch, MAIN_LINE, 0, inputNeurons / 6, stoch_main) <= 0 ||
+            CopyBuffer(handle_stoch, SIGNAL_LINE, 0, inputNeurons / 6, stoch_signal) <= 0 ||
+            CopyBuffer(handle_adx, 0, 0, inputNeurons / 6, adx) <= 0)
       {
          Print("Error copying indicator buffers: ", GetLastError());
          return;
       }
 
-      for (int i = 0; i < inputNeurons / 5; i++)
+      for (int i = 0; i < inputNeurons / 6; i++)
       {
-         int index = i * 5;
-         if (index + 4 < ArraySize(inputs))
+         int index = i * 6;
+         if (index + 5 < ArraySize(inputs))
          {
             double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
             double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-            inputs[index] = (macd_main[i] - macd_min) / (macd_max - macd_min);
-            inputs[index + 1] = (macd_signal[i] - macd_min) / (macd_max - macd_min);
+            inputs[index] = 2 * (macd_main[i] - macd_min) / (macd_max - macd_min) - 1;
+            inputs[index + 1] = 2 * (macd_signal[i] - macd_min) / (macd_max - macd_min) - 1;
             
-            // Normalize RSI (already in range 0-100)
-            inputs[index + 2] = rsi[i] / 100.0;
+            // Normalize RSI to range [-1, 1]
+            inputs[index + 2] = 2 * (rsi[i] / 100.0) - 1;
             
-            // Normalize Stochastic (already in range 0-100)
-            inputs[index + 3] = stoch_main[i] / 100.0;
-            inputs[index + 4] = stoch_signal[i] / 100.0;
+            // Normalize Stochastic to range [-1, 1]
+            inputs[index + 3] = 2 * (stoch_main[i] / 100.0) - 1;
+            inputs[index + 4] = 2 * (stoch_signal[i] / 100.0) - 1;
+            
+            // Normalize ADX to range [-1, 1]
+            inputs[index + 5] = 2 * (adx[i] / 100.0) - 1;
          }
       }
 
       // Feed forward (predict)
       nn.FeedForward(inputs);
 
-      // Get outputs
-      double outputs[];
-      nn.GetOutputs(outputs);
+      // Get output
+      double output[];
+      nn.GetOutputs(output);
 
-      // Make trading decision based on outputs
-      if(ArraySize(outputs) >= 2)
+      // Make trading decision based on output
+      if(ArraySize(output) >= 1)
       {
-         // Print("outputs[0]: ", outputs[0], " outputs[1] ", outputs[1]);
+         // Print("output: ", output[0]);
          // Print("Current risk: ", accountMargin, " Max risk amount: ", maxRiskAmount);
-         if(outputs[0] > outputs[1] && outputs[0] > 0.6 && GlobaltimeOutExpiredSell && accountMargin < maxRiskAmount)
+         if(output[0] < -0.6 && GlobaltimeOutExpiredSell && accountMargin < maxRiskAmount)
          {
             // Consider opening a sell position
-            //Print("Sell signal: ", outputs[0], " > ", outputs[1]);
+            //Print("Sell signal: ", output[0]);
             openSellOrder();
             GlobaltimeOutExpiredSell = false;
          }
-         else if(outputs[1] > outputs[0] && outputs[1] > 0.6 && GlobaltimeOutExpiredBuy && accountMargin < maxRiskAmount)
+         else if(output[0] > 0.6 && GlobaltimeOutExpiredBuy && accountMargin < maxRiskAmount)
          {
             // Consider opening a buy position
-            //Print("Buy signal: ", outputs[1], " > ", outputs[0]);
+            //Print("Buy signal: ", output[0]);
             openBuyOrder();
             GlobaltimeOutExpiredBuy = false;
          }
       }
       else
       {
-         Print("Error: Unexpected number of outputs from neural network. Expected 2, got ", ArraySize(outputs));
+         Print("Error: Unexpected number of outputs from neural network. Expected 1, got ", ArraySize(output));
       }
 
       if(!checkAndCloseSingleProfitOrders())
       {
          Print("Error in checkAndCloseSingleProfitOrders()");
       }
-
-
       // Add your trading logic here
    }
 
@@ -467,6 +456,7 @@ public:
       IndicatorRelease(handle_macd);
       IndicatorRelease(handle_rsi);
       IndicatorRelease(handle_stoch);
+      IndicatorRelease(handle_adx);
    }
 };
 //+------------------------------------------------------------------+
