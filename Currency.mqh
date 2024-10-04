@@ -43,7 +43,7 @@ public:
       }
 
       inputNeurons = layers[0];
-      outputNeurons = 1; // Changed to 1 output
+      outputNeurons = layers[numLayers-1]; // Get outputNeurons from last element in layers
       trainingEpochs = inpTrainingEpochs;
       learningRate = inpLearningRate;
       _symbolName = symbolName;
@@ -51,7 +51,6 @@ public:
       _closeInProfit = closeInProfit;
       _numberOfData = numberOfData;
       // Initialize the neural network
-      layers[numLayers-1] = 1; // Ensure the last layer has 1 neuron
       nn.BuildModel(layers, numLayers);
    }
 
@@ -73,7 +72,7 @@ public:
       double inputs[];
       double targets[];
       ArrayResize(inputs, inputNeurons);
-      ArrayResize(targets, 1); // Changed to 1 output
+      ArrayResize(targets, outputNeurons);
       // Initialize targets and inputs with 0
       ArrayInitialize(targets, -555);
       ArrayInitialize(inputs, -444);
@@ -105,7 +104,7 @@ public:
 
       int totalSamples = ArraySize(macd_main); 
       int totalInputs = totalSamples * 6;
-      int totalTargets = totalInputs/inputNeurons;
+      int totalTargets = totalInputs/inputNeurons * outputNeurons;
       
       if (!ArrayResize(inputs, totalInputs) || !ArrayResize(targets, totalTargets))
       {
@@ -132,23 +131,26 @@ public:
             inputs[index + 5] = 2 * (adx[i] / 100.0) - 1;
          }
 
-         // Simple target: if conditions for buy are met, set target to 1, if conditions for sell are met, set target to -1, else 0
+         // Simple target: if conditions for buy are met, set target to [0, 1], if conditions for sell are met, set target to [1, 0], else [0, 0]
          if (i < ArraySize(adx) - 1 && i < ArraySize(macd_main) - 1 && i < ArraySize(macd_signal) - 1 && i < ArraySize(rsi) - 1 && i < ArraySize(stoch_main) - 1 && i < ArraySize(stoch_signal) - 1)
          {
-            int targetIndex = i;
-            if (targetIndex < ArraySize(targets))  // Add this check to prevent array out of range error
+            int targetIndex = i * outputNeurons;
+            if (targetIndex + outputNeurons - 1 < ArraySize(targets))  // Add this check to prevent array out of range error
             {
                if (macd_main[i] > macd_signal[i] && rsi[i] > 70 && stoch_main[i] > stoch_signal[i] && adx[i] > 25 && stoch_main[i] > 80 )
                {
-                  targets[targetIndex] = 1.0; // Buy signal
+                  targets[targetIndex] = 0.0; // Buy signal
+                  targets[targetIndex+1] = 1.0;
                }
                else if (macd_main[i] < macd_signal[i] && rsi[i] < 30 && stoch_main[i] < stoch_signal[i] && adx[i] > 25 && stoch_main[i] < 20 )
                {
-                  targets[targetIndex] = -1.0; // Sell signal
+                  targets[targetIndex] = 1.0; // Sell signal
+                  targets[targetIndex+1] = 0.0;
                }
                else
                {
                   targets[targetIndex] = 0.0; // No trade signal
+                  targets[targetIndex+1] = 0.0;
                }
             }
          }
@@ -211,7 +213,6 @@ public:
 
       // Feed forward (predict)
       nn.FeedForward(inputs);
-
       // Get output
       double output[];
       nn.GetOutputs(output);
@@ -460,3 +461,4 @@ public:
    }
 };
 //+------------------------------------------------------------------+
+

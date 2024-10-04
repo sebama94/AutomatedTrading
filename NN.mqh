@@ -183,7 +183,7 @@ void NeuralNetwork::FeedForward(double &inputs[])
          if(layer == m_numLayers - 1)
            {
             // Output layer
-            m_neurons[neuronIndex++] = sum; // Linear activation for output layer
+            m_neurons[neuronIndex++] = 1.0 / (1.0 + MathExp(-sum)); // Sigmoid activation for output layer
            }
          else
            {
@@ -193,12 +193,9 @@ void NeuralNetwork::FeedForward(double &inputs[])
         }
      }
    
-   // Apply softmax to output layer
+   // Debug print to check the output layer values
    int outputLayerStart = ArraySize(m_neurons) - m_layerSizes[m_numLayers - 1];
-   ActivateOutput(m_neurons, m_layerSizes[m_numLayers - 1], outputLayerStart);
-   
-   // Debug print to check the output layer values after softmax
-   Print("Output layer values after softmax: ", DoubleArrayToString(m_neurons, outputLayerStart, m_layerSizes[m_numLayers - 1]));
+   Print("Output layer values: ", DoubleArrayToString(m_neurons, outputLayerStart, m_layerSizes[m_numLayers - 1]));
   }
 
 //+------------------------------------------------------------------+
@@ -246,7 +243,7 @@ void NeuralNetwork::BuildModel(int &layerSizes[], int numLayers)
          {
             for(int j = 0; j < fanIn; j++)
             {
-               weights[weightIndex++] = (MathRand() / 32768.0) * 0.01; // Scale down to small values
+               weights[weightIndex++] = (MathRand() / 32768.0) * MathSqrt(2.0 / fanIn); // He initialization
             }
             biases[biasIndex++] = 0;  // You can start biases at zero
          }
@@ -262,11 +259,11 @@ void NeuralNetwork::BuildModel(int &layerSizes[], int numLayers)
 }
 
 //+------------------------------------------------------------------+
-//| Activation function for hidden layers (Hyperbolic Tangent)       |
+//| Activation function for hidden layers (ReLU)                     |
 //+------------------------------------------------------------------+
 double NeuralNetwork::ActivateHidden(double x)
   {
-   return MathTanh(x);
+   return MathMax(0, x);
   }
 
 //+------------------------------------------------------------------+
@@ -274,25 +271,17 @@ double NeuralNetwork::ActivateHidden(double x)
 //+------------------------------------------------------------------+
 double NeuralNetwork::ActivateHiddenDerivative(double x)
   {
-   double tanh = MathTanh(x);
-   return 1 - tanh * tanh;
+   return x > 0 ? 1 : 0;
   }
 
 //+------------------------------------------------------------------+
-//| Activation function for output layer (Softmax)                   |
+//| Activation function for output layer (Sigmoid)                   |
 //+------------------------------------------------------------------+
 void NeuralNetwork::ActivateOutput(double &x[], int size, int startIndex)
   {
-   double max = x[ArrayMaximum(x, startIndex, size)];
-   double sum = 0;
    for(int i = 0; i < size; i++)
      {
-      x[startIndex + i] = MathExp(x[startIndex + i] - max);
-      sum += x[startIndex + i];
-     }
-   for(int i = 0; i < size; i++)
-     {
-      x[startIndex + i] /= sum;
+      x[startIndex + i] = 1.0 / (1.0 + MathExp(-x[startIndex + i]));
      }
   }
 
@@ -340,14 +329,14 @@ void NeuralNetwork::BackPropagate(double &inputs[], double &targets[], double le
    int weightIndex = ArraySize(m_weights) - m_layerSizes[outputLayer] * m_layerSizes[outputLayer - 1];
    int biasIndex = ArraySize(m_biases) - m_layerSizes[outputLayer];
 
-   // Calculate output layer errors (using cross-entropy derivative)
+   // Calculate output layer errors
    for(int i = 0; i < m_layerSizes[outputLayer]; i++)
    {
-      errors[neuronIndex + i] = m_neurons[neuronIndex + i] - targets[i];  
+      errors[neuronIndex + i] = (m_neurons[neuronIndex + i] - targets[i]) * m_neurons[neuronIndex + i] * (1 - m_neurons[neuronIndex + i]);
    }
 
-   // Print softmax output and target
-   Print("Softmax output: ", DoubleArrayToString(m_neurons, neuronIndex, m_layerSizes[outputLayer]));
+   // Print sigmoid output and target
+   Print("Sigmoid output: ", DoubleArrayToString(m_neurons, neuronIndex, m_layerSizes[outputLayer]));
    Print("Target: ", DoubleArrayToString(targets, 0, m_layerSizes[outputLayer]));
 
    // Backpropagate errors
@@ -539,12 +528,12 @@ void NeuralNetwork::ValidateInputs(double &inputs[], double &targets[])
             ") does not match number of target samples (", targetSize / expectedTargetSize, ")");
      }
    
-   // Check if all target values are valid (0 or 1 for binary classification)
+   // Check if all target values are valid (between 0 and 1 for binary classification)
    for(int i = 0; i < targetSize; i++)
      {
-      if(targets[i] != 0 && targets[i] != 1)
+      if(targets[i] < 0 || targets[i] > 1)
         {
-         Print("Error: Invalid target value ", targets[i], " at index ", i, ". Expected 0 or 1 for binary classification.");
+         Print("Error: Invalid target value ", targets[i], " at index ", i, ". Expected value between 0 and 1 for binary classification.");
         }
      }
   }
