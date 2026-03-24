@@ -1,464 +1,429 @@
 //+------------------------------------------------------------------+
-//|                                                      ProjectName |
-//|                                      Copyright 2020, CompanyName |
-//|                                       http://www.companyname.net |
+//|                                                     Currency.mqh |
+//|                        Copyright 2023, MetaQuotes Software Corp. |
+//|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #include "NN.mqh"
-#include <Trade\Trade.mqh> //Instantiate Trades Execution Library
-#include <Trade\OrderInfo.mqh> //Instantiate Library for Orders Information
-#include <Trade\PositionInfo.mqh> //Instantiate Library for Positions Information
+#include <Trade\Trade.mqh>
+#include <Trade\OrderInfo.mqh>
+#include <Trade\PositionInfo.mqh>
 #include <Generic\HashMap.mqh>
 
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
+extern bool GlobaltimeOutExpiredBuy;
+extern bool GlobaltimeOutExpiredSell;
+
+// Numero di feature per ogni barra (MACD main, MACD signal, RSI, Stoch main, Stoch signal, ADX)
+#define FEATURES_PER_BAR 6
+
 class Currency
 {
 private:
-   NeuralNetwork nn;
-   int handle_macd;
-   int handle_rsi;
-   int handle_stoch;
-   int handle_adx;
-   int inputNeurons;
-   int outputNeurons;
-   int trainingEpochs;
-   double learningRate;
-   string _symbolName;
-   double _lotSize;
-   double _closeInProfit;
-   CTrade _trade;
-   CPositionInfo _myPositionInfo;
-   CHashMap<ulong, double> previousProfits;
-   int _numberOfData;
+   NeuralNetwork          nn;
+   int                    handle_macd;
+   int                    handle_rsi;
+   int                    handle_stoch;
+   int                    handle_adx;
+   int                    inputNeurons;
+   int                    outputNeurons;
+   int                    lookbackBars;   // inputNeurons / FEATURES_PER_BAR
+   int                    trainingEpochs;
+   double                 learningRate;
+   string                 _symbolName;
+   double                 _lotSize;
+   double                 _closeInProfit;
+   double                 _stopLoss;
+   double                 _takeProfit;
+   int                    _maxPositions;
+   CTrade                 _trade;
+   CPositionInfo          _myPositionInfo;
+   CHashMap<ulong,double> previousProfits;
+   int                    _numberOfData;
+
+   // Parametri di normalizzazione MACD calcolati sul training set
+   // e riutilizzati in modo consistente in Run()
+   double                 _macd_min;
+   double                 _macd_max;
+
+   //--- Helpers privati ---
+
+   // Normalizza un valore MACD in [-1, 1] usando i parametri del training
+   double NormMacd(double value)
+   {
+      double range = _macd_max - _macd_min;
+      if(range < 1e-10) return 0.0;
+      return MathMax(-1.0, MathMin(1.0, 2.0 * (value - _macd_min) / range - 1.0));
+   }
+
+   // Conta le posizioni aperte sul simbolo corrente
+   int CountOpenPositions()
+   {
+      int count = 0;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+         if(_myPositionInfo.SelectByIndex(i) && _myPositionInfo.Symbol() == _symbolName)
+            count++;
+      return count;
+   }
 
 public:
-   Currency(int &layers[], int numLayers, int inpTrainingEpochs, double inpLearningRate,
-            string symbolName, double lotSize, double closeInProfit, int numberOfData)
+   Currency(int &layers[], int numLayers,
+            int    inpTrainingEpochs,
+            double inpLearningRate,
+            string symbolName,
+            double lotSize,
+            double closeInProfit,
+            int    numberOfData,
+            double stopLoss,
+            double takeProfit,
+            int    maxPositions)
    {
       if(numLayers < 2)
       {
-         Print("Error: Neural network must have at least 2 layers");
+         Print("Errore: la rete deve avere almeno 2 layer");
          return;
       }
 
-      inputNeurons = layers[0];
-      outputNeurons = layers[numLayers-1]; // Get outputNeurons from last element in layers
+      inputNeurons   = layers[0];
+      outputNeurons  = layers[numLayers - 1];
+      lookbackBars   = inputNeurons / FEATURES_PER_BAR;
       trainingEpochs = inpTrainingEpochs;
-      learningRate = inpLearningRate;
-      _symbolName = symbolName;
-      _lotSize = lotSize;
+      learningRate   = inpLearningRate;
+      _symbolName    = symbolName;
+      _lotSize       = lotSize;
       _closeInProfit = closeInProfit;
-      _numberOfData = numberOfData;
-      // Initialize the neural network
+      _numberOfData  = numberOfData;
+      _stopLoss      = stopLoss;
+      _takeProfit    = takeProfit;
+      _maxPositions  = maxPositions;
+      _macd_min      = -0.001;
+      _macd_max      =  0.001;
+
       nn.BuildModel(layers, numLayers);
    }
 
+   //+------------------------------------------------------------------+
+   //| Init: raccoglie dati storici, costruisce il dataset di training   |
+   //| con label forward-looking (direzione del prossimo bar),           |
+   //| addestra la rete neurale.                                         |
+   //+------------------------------------------------------------------+
    bool Init()
    {
-      // Initialize indicators
-      handle_macd = iMACD(_symbolName, PERIOD_M30, 12, 26, 9, PRICE_CLOSE);
-      handle_rsi = iRSI(_symbolName, PERIOD_M30, 14, PRICE_CLOSE);
+      handle_macd  = iMACD(_symbolName,  PERIOD_M30, 12, 26, 9, PRICE_CLOSE);
+      handle_rsi   = iRSI(_symbolName,   PERIOD_M30, 14, PRICE_CLOSE);
       handle_stoch = iStochastic(_symbolName, PERIOD_M30, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-      handle_adx = iADX(_symbolName, PERIOD_M30, 14);
-      if(handle_macd == INVALID_HANDLE || handle_rsi == INVALID_HANDLE || handle_stoch == INVALID_HANDLE || handle_adx == INVALID_HANDLE)
+      handle_adx   = iADX(_symbolName,   PERIOD_M30, 14);
+
+      if(handle_macd  == INVALID_HANDLE || handle_rsi   == INVALID_HANDLE ||
+         handle_stoch == INVALID_HANDLE || handle_adx   == INVALID_HANDLE)
       {
-         Print("Failed to create indicators");
+         Print("Errore: impossibile creare gli indicatori");
          return false;
       }
-      Sleep(5000);
+      Sleep(5000); // attesa per la valorizzazione iniziale degli indicatori
 
-      // Prepare training data
+      // Barre necessarie:
+      //   _numberOfData campioni,
+      //   ognuno usa lookbackBars barre di storico,
+      //   più 1 barra extra per generare la label del campione più recente
+      int requiredBars = _numberOfData + lookbackBars + 2;
+
+      double macd_main[], macd_signal[], rsi_buf[], stoch_main[], stoch_signal[], adx_buf[], close_buf[];
+      ArraySetAsSeries(macd_main,    true);
+      ArraySetAsSeries(macd_signal,  true);
+      ArraySetAsSeries(rsi_buf,      true);
+      ArraySetAsSeries(stoch_main,   true);
+      ArraySetAsSeries(stoch_signal, true);
+      ArraySetAsSeries(adx_buf,      true);
+      ArraySetAsSeries(close_buf,    true);
+
+      // Copia i buffer a partire dalla barra 1 (bar 0 = barra corrente non ancora chiusa)
+      if(CopyBuffer(handle_macd,  0,           1, requiredBars, macd_main)    <= 0 ||
+         CopyBuffer(handle_macd,  1,           1, requiredBars, macd_signal)  <= 0 ||
+         CopyBuffer(handle_rsi,   0,           1, requiredBars, rsi_buf)      <= 0 ||
+         CopyBuffer(handle_stoch, MAIN_LINE,   1, requiredBars, stoch_main)   <= 0 ||
+         CopyBuffer(handle_stoch, SIGNAL_LINE, 1, requiredBars, stoch_signal) <= 0 ||
+         CopyBuffer(handle_adx,   0,           1, requiredBars, adx_buf)      <= 0 ||
+         CopyClose(_symbolName,   PERIOD_M30,  1, requiredBars, close_buf)    <= 0)
+      {
+         Print("Errore copia buffer indicatori (Init). Codice: ", GetLastError());
+         return false;
+      }
+
+      int availableBars = ArraySize(macd_main);
+      // Campioni massimi: ogni campione usa barre [k+1 .. k+lookbackBars] e label su barra k
+      // => k varia da 0 a numSamples-1, quindi numSamples+lookbackBars < availableBars
+      int maxSamples = availableBars - lookbackBars - 1;
+      int numSamples = MathMin(_numberOfData, maxSamples);
+
+      if(numSamples <= 0)
+      {
+         Print("Errore: dati storici insufficienti. Disponibili: ", availableBars,
+               ", necessari: ", lookbackBars + 2);
+         return false;
+      }
+
+      // --- Calcola normalizzazione MACD dal dataset completo ---
+      _macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
+      _macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
+      if(_macd_max - _macd_min < 1e-10)
+         _macd_max = _macd_min + 1e-6;
+
+      // --- Costruzione dataset ---
+      // Indicizzazione (ArraySetAsSeries=true):
+      //   arr[0] = barra più recente (chiusa 1 tick fa, cioè 1 barra fa)
+      //   arr[k] = barra chiusa k+1 barre fa
+      //
+      // Per campione k_target (0..numSamples-1):
+      //   Finestra di osservazione: indici [k_target+1 .. k_target+lookbackBars]
+      //     (da più recente a più vecchia)
+      //   Label forward-looking: direzione di close_buf[k_target] rispetto a close_buf[k_target+1]
+      //     close_buf[k_target] > close_buf[k_target+1] → bar k_target andò su → label BUY [1,0]
+      //     close_buf[k_target] < close_buf[k_target+1] → bar k_target andò giù → label SELL [0,1]
+      //     equal → Hold [0,0]  (raro)
+      //
+      // Questo insegna alla rete: "dato lo stato degli indicatori nelle ultime lookbackBars barre,
+      // la barra successiva sale o scende?"
+
       double inputs[];
       double targets[];
-      ArrayResize(inputs, inputNeurons);
-      ArrayResize(targets, outputNeurons);
-      // Initialize targets and inputs with 0
-      ArrayInitialize(targets, -555);
-      ArrayInitialize(inputs, -444);
+      ArrayResize(inputs,  numSamples * inputNeurons);
+      ArrayResize(targets, numSamples * outputNeurons);
+      ArrayInitialize(inputs,  0.0);
+      ArrayInitialize(targets, 0.0);
 
-      // Get historical data for training
-      double macd_main[];
-      double macd_signal[];
-      double rsi[];
-      double stoch_main[];
-      double stoch_signal[];
-      double adx[];
-      ArraySetAsSeries(macd_main, true);
-      ArraySetAsSeries(macd_signal, true);
-      ArraySetAsSeries(rsi, true);
-      ArraySetAsSeries(stoch_main, true);
-      ArraySetAsSeries(stoch_signal, true);
-      ArraySetAsSeries(adx, true);
-      int requiredSamples = _numberOfData * inputNeurons / 6;
-      if (CopyBuffer(handle_macd, 0, 1, requiredSamples, macd_main) <= 0 ||
-          CopyBuffer(handle_macd, 1, 1, requiredSamples, macd_signal) <= 0 ||
-          CopyBuffer(handle_rsi, 0, 1, requiredSamples, rsi) <= 0 ||
-          CopyBuffer(handle_stoch, MAIN_LINE, 1, requiredSamples, stoch_main) <= 0 ||
-          CopyBuffer(handle_stoch, SIGNAL_LINE, 1, requiredSamples, stoch_signal) <= 0 ||
-          CopyBuffer(handle_adx, 0, 1, requiredSamples, adx) <= 0)
-      {
-         Print("Error copying indicator buffers in Init. Error code: ", GetLastError());
-         return false;
-      }
+      int buyCount  = 0;
+      int sellCount = 0;
+      int holdCount = 0;
 
-      int totalSamples = ArraySize(macd_main); 
-      int totalInputs = totalSamples * 6;
-      int totalTargets = totalInputs/inputNeurons * outputNeurons;
-      
-      if (!ArrayResize(inputs, totalInputs) || !ArrayResize(targets, totalTargets))
+      for(int k = 0; k < numSamples; k++)
       {
-         Print("Error resizing arrays. Error code: ", GetLastError());
-         return false;
-      }
-
-      for (int i = 0; i < totalSamples; i++)
-      {
-         int index = i * 6;
-         if (index + 5 < ArraySize(inputs))
+         // Costruisci input: lookbackBars barre ordinate dalla più vecchia alla più recente
+         for(int b = 0; b < lookbackBars; b++)
          {
-            // Normalize MACD to range [-1, 1]
-            double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
-            double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-            inputs[index] = 2 * (macd_main[i] - macd_min) / (macd_max - macd_min) - 1;
-            inputs[index + 1] = 2 * (macd_signal[i] - macd_min) / (macd_max - macd_min) - 1;
-            // Normalize RSI to range [-1, 1]
-            inputs[index + 2] = 2 * (rsi[i] / 100.0) - 1;
-            // Normalize Stochastic to range [-1, 1]
-            inputs[index + 3] = 2 * (stoch_main[i] / 100.0) - 1;
-            inputs[index + 4] = 2 * (stoch_signal[i] / 100.0) - 1;
-            // Normalize ADX to range [-1, 1]
-            inputs[index + 5] = 2 * (adx[i] / 100.0) - 1;
+            // b=0: barra più vecchia della finestra (k + lookbackBars)
+            // b=lookbackBars-1: barra più recente della finestra (k + 1)
+            int barIdx     = k + lookbackBars - b;
+            int featOffset = k * inputNeurons + b * FEATURES_PER_BAR;
+
+            inputs[featOffset + 0] = NormMacd(macd_main[barIdx]);
+            inputs[featOffset + 1] = NormMacd(macd_signal[barIdx]);
+            inputs[featOffset + 2] = 2.0 * (rsi_buf[barIdx]      / 100.0) - 1.0;
+            inputs[featOffset + 3] = 2.0 * (stoch_main[barIdx]   / 100.0) - 1.0;
+            inputs[featOffset + 4] = 2.0 * (stoch_signal[barIdx] / 100.0) - 1.0;
+            inputs[featOffset + 5] = MathMax(-1.0, MathMin(1.0, 2.0 * (adx_buf[barIdx] / 100.0) - 1.0));
          }
 
-         // Simple target: if conditions for buy are met, set target to [0, 1], if conditions for sell are met, set target to [1, 0], else [0, 0]
-         if (i < ArraySize(adx) - 1 && i < ArraySize(macd_main) - 1 && i < ArraySize(macd_signal) - 1 && i < ArraySize(rsi) - 1 && i < ArraySize(stoch_main) - 1 && i < ArraySize(stoch_signal) - 1)
+         // Genera label dalla direzione del prossimo bar
+         int targetOffset = k * outputNeurons;
+         if(close_buf[k] > close_buf[k + 1])       // barra k salita
          {
-            int targetIndex = i * outputNeurons;
-            if (targetIndex + outputNeurons - 1 < ArraySize(targets))  // Add this check to prevent array out of range error
-            {
-               if (macd_main[i] > macd_signal[i] && rsi[i] > 70 && stoch_main[i] > stoch_signal[i] && adx[i] > 25 && stoch_main[i] > 80 )
-               {
-                  targets[targetIndex] = 0.0; // Buy signal
-                  targets[targetIndex+1] = 1.0;
-               }
-               else if (macd_main[i] < macd_signal[i] && rsi[i] < 30 && stoch_main[i] < stoch_signal[i] && adx[i] > 25 && stoch_main[i] < 20 )
-               {
-                  targets[targetIndex] = 1.0; // Sell signal
-                  targets[targetIndex+1] = 0.0;
-               }
-               else
-               {
-                  targets[targetIndex] = 0.0; // No trade signal
-                  targets[targetIndex+1] = 0.0;
-               }
-            }
+            targets[targetOffset]     = 1.0; // BUY
+            targets[targetOffset + 1] = 0.0;
+            buyCount++;
+         }
+         else if(close_buf[k] < close_buf[k + 1])  // barra k scesa
+         {
+            targets[targetOffset]     = 0.0;
+            targets[targetOffset + 1] = 1.0; // SELL
+            sellCount++;
+         }
+         else                                        // invariata (Hold)
+         {
+            targets[targetOffset]     = 0.0;
+            targets[targetOffset + 1] = 0.0;
+            holdCount++;
          }
       }
+
+      Print("Dataset: ", numSamples, " campioni | BUY=", buyCount,
+            " SELL=", sellCount, " HOLD=", holdCount,
+            " | lookback=", lookbackBars, " barre");
 
       nn.Train(inputs, targets, trainingEpochs, learningRate);
-
-      Print("Neural network training completed.");
-
+      Print("Training completato.");
       return true;
    }
 
-   void Run(double accountMargin, double maxRiskAmount)
+   //+------------------------------------------------------------------+
+   //| Run: esegue la predizione sul tick corrente e gestisce ordini    |
+   //+------------------------------------------------------------------+
+   void Run(double maxRiskAmount)
    {
-      // Prepare input data
-      double inputs[];
-      ArrayResize(inputs, inputNeurons);
-
-      // Get indicator values
-      double macd_main[], macd_signal[], rsi[], stoch_main[], stoch_signal[], adx[];
-      ArraySetAsSeries(macd_main, true);
-      ArraySetAsSeries(macd_signal, true);
-      ArraySetAsSeries(rsi, true);
-      ArraySetAsSeries(stoch_main, true);
+      // Raccoglie le lookbackBars barre più recenti completate
+      double macd_main[], macd_signal[], rsi_buf[], stoch_main[], stoch_signal[], adx_buf[];
+      ArraySetAsSeries(macd_main,    true);
+      ArraySetAsSeries(macd_signal,  true);
+      ArraySetAsSeries(rsi_buf,      true);
+      ArraySetAsSeries(stoch_main,   true);
       ArraySetAsSeries(stoch_signal, true);
-      ArraySetAsSeries(adx, true);
+      ArraySetAsSeries(adx_buf,      true);
 
-      if (CopyBuffer(handle_macd, 0, 0, inputNeurons / 6, macd_main) <= 0 ||
-            CopyBuffer(handle_macd, 1, 0, inputNeurons / 6, macd_signal) <= 0 ||
-            CopyBuffer(handle_rsi, 0, 0, inputNeurons / 6, rsi) <= 0 ||
-            CopyBuffer(handle_stoch, MAIN_LINE, 0, inputNeurons / 6, stoch_main) <= 0 ||
-            CopyBuffer(handle_stoch, SIGNAL_LINE, 0, inputNeurons / 6, stoch_signal) <= 0 ||
-            CopyBuffer(handle_adx, 0, 0, inputNeurons / 6, adx) <= 0)
+      // +1 per coerenza con il training (indici 1..lookbackBars)
+      int barsToLoad = lookbackBars + 1;
+      if(CopyBuffer(handle_macd,  0,           1, barsToLoad, macd_main)    <= 0 ||
+         CopyBuffer(handle_macd,  1,           1, barsToLoad, macd_signal)  <= 0 ||
+         CopyBuffer(handle_rsi,   0,           1, barsToLoad, rsi_buf)      <= 0 ||
+         CopyBuffer(handle_stoch, MAIN_LINE,   1, barsToLoad, stoch_main)   <= 0 ||
+         CopyBuffer(handle_stoch, SIGNAL_LINE, 1, barsToLoad, stoch_signal) <= 0 ||
+         CopyBuffer(handle_adx,   0,           1, barsToLoad, adx_buf)      <= 0)
       {
-         Print("Error copying indicator buffers: ", GetLastError());
+         Print("Errore copia buffer indicatori (Run). Codice: ", GetLastError());
          return;
       }
 
-      for (int i = 0; i < inputNeurons / 6; i++)
+      // Costruisci input coerentemente con il training (k_target=0):
+      //   Finestra osservazione: indici 1..lookbackBars (b=0: più vecchia, b=lookbackBars-1: più recente)
+      //   barIdx = lookbackBars - b  →  b=0: arr[lookbackBars], b=lookbackBars-1: arr[1]
+      double inputs[];
+      ArrayResize(inputs, inputNeurons);
+
+      for(int b = 0; b < lookbackBars; b++)
       {
-         int index = i * 6;
-         if (index + 5 < ArraySize(inputs))
-         {
-            double macd_min = MathMin(macd_main[ArrayMinimum(macd_main)], macd_signal[ArrayMinimum(macd_signal)]);
-            double macd_max = MathMax(macd_main[ArrayMaximum(macd_main)], macd_signal[ArrayMaximum(macd_signal)]);
-            inputs[index] = 2 * (macd_main[i] - macd_min) / (macd_max - macd_min) - 1;
-            inputs[index + 1] = 2 * (macd_signal[i] - macd_min) / (macd_max - macd_min) - 1;
-            
-            // Normalize RSI to range [-1, 1]
-            inputs[index + 2] = 2 * (rsi[i] / 100.0) - 1;
-            
-            // Normalize Stochastic to range [-1, 1]
-            inputs[index + 3] = 2 * (stoch_main[i] / 100.0) - 1;
-            inputs[index + 4] = 2 * (stoch_signal[i] / 100.0) - 1;
-            
-            // Normalize ADX to range [-1, 1]
-            inputs[index + 5] = 2 * (adx[i] / 100.0) - 1;
-         }
+         int barIdx     = lookbackBars - b;         // b=0: oldest, b=lookbackBars-1: most recent
+         int featOffset = b * FEATURES_PER_BAR;
+
+         inputs[featOffset + 0] = NormMacd(macd_main[barIdx]);
+         inputs[featOffset + 1] = NormMacd(macd_signal[barIdx]);
+         inputs[featOffset + 2] = 2.0 * (rsi_buf[barIdx]      / 100.0) - 1.0;
+         inputs[featOffset + 3] = 2.0 * (stoch_main[barIdx]   / 100.0) - 1.0;
+         inputs[featOffset + 4] = 2.0 * (stoch_signal[barIdx] / 100.0) - 1.0;
+         inputs[featOffset + 5] = MathMax(-1.0, MathMin(1.0, 2.0 * (adx_buf[barIdx] / 100.0) - 1.0));
       }
 
-      // Feed forward (predict)
       nn.FeedForward(inputs);
-      // Get output
+
       double output[];
       nn.GetOutputs(output);
 
-      // Make trading decision based on output
-      if(ArraySize(output) >= 1)
+      if(ArraySize(output) < 2)
       {
-         // Print("output: ", output[0]);
-         // Print("Current risk: ", accountMargin, " Max risk amount: ", maxRiskAmount);
-         if(output[0] < -0.6 && GlobaltimeOutExpiredSell && accountMargin < maxRiskAmount)
-         {
-            // Consider opening a sell position
-            //Print("Sell signal: ", output[0]);
-            openSellOrder();
-            GlobaltimeOutExpiredSell = false;
-         }
-         else if(output[0] > 0.6 && GlobaltimeOutExpiredBuy && accountMargin < maxRiskAmount)
-         {
-            // Consider opening a buy position
-            //Print("Buy signal: ", output[0]);
-            openBuyOrder();
+         Print("Errore: attesi 2 output, ricevuti ", ArraySize(output));
+         return;
+      }
+
+      // output[0] = probabilità BUY  ∈ [0,1]  (sigmoid)
+      // output[1] = probabilità SELL ∈ [0,1]  (sigmoid)
+      double probBuy  = output[0];
+      double probSell = output[1];
+
+      // Condizione di trading:
+      //   Free margin sufficiente E posizioni aperte sotto il massimo
+      double freeMargin = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+      bool   canTrade   = (freeMargin >= maxRiskAmount) && (CountOpenPositions() < _maxPositions);
+
+      if(probBuy > 0.6 && probSell < 0.4 && GlobaltimeOutExpiredBuy && canTrade)
+      {
+         if(openBuyOrder())
             GlobaltimeOutExpiredBuy = false;
-         }
       }
-      else
+      else if(probSell > 0.6 && probBuy < 0.4 && GlobaltimeOutExpiredSell && canTrade)
       {
-         Print("Error: Unexpected number of outputs from neural network. Expected 1, got ", ArraySize(output));
+         if(openSellOrder())
+            GlobaltimeOutExpiredSell = false;
       }
 
-      if(!checkAndCloseSingleProfitOrders())
-      {
-         Print("Error in checkAndCloseSingleProfitOrders()");
-      }
-      // Add your trading logic here
+      checkAndCloseProfitOrders();
    }
 
-   bool checkAndCloseSingleProfitOrders()
+   //+------------------------------------------------------------------+
+   //| Chiude posizioni che hanno raggiunto il target di profitto        |
+   //+------------------------------------------------------------------+
+   void checkAndCloseProfitOrders()
    {
-      double singleProfit = 0.0;
-
-      for(int i=PositionsTotal()-1; i >=0; i--)
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
       {
-         if(_myPositionInfo.SelectByIndex(i))
+         if(!_myPositionInfo.SelectByIndex(i))       continue;
+         if(_myPositionInfo.Symbol() != _symbolName) continue;
+
+         ulong  ticket = _myPositionInfo.Ticket();
+         double profit = _myPositionInfo.Commission() + _myPositionInfo.Swap() + _myPositionInfo.Profit();
+
+         if(profit > _closeInProfit)
          {
-            ulong ticket = _myPositionInfo.Ticket();
-            double previousProfit = 0.0;
-            if(previousProfits.ContainsKey(ticket))
-            {
-               if(!previousProfits.TryGetValue(ticket,previousProfit))
-               {
-                  Print("Error in previousProfit.TryGetValue - Ticket: ", ticket);
-                  return false;
-               }
-            }
+            if(_trade.PositionClose(ticket))
+               previousProfits.Remove(ticket);
             else
-            {
-               if(!previousProfits.Add(ticket, previousProfit))
-               {
-                  Print("Error in previousProfits.Add(ticket, previousProfit) - ticket: ", ticket, " previousProfit: ", previousProfit);
-                  return false;
-               }
-            }
-            singleProfit=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
-            //Print("_closeInProfit: ", _closeInProfit, ", singleProfit: ", singleProfit);
-            if(singleProfit > _closeInProfit)// && singleProfit < previousProfit-0.5 )
-            {
-               Print("ticket: ", ticket," singleProfit < previousProfit: ", singleProfit," < ",previousProfit-3 );
-               if (_trade.PositionClose(ticket))
-               {
-                  previousProfits.Remove(ticket);
-               }
-               else
-               {
-                  Print("Error closing sell order: ", _trade.ResultRetcode());
-                  return false;
-               }
-            }
-            else
-            {
-               if(!previousProfits.TrySetValue(ticket, singleProfit))
-               {
-                  Print("Error in previousProfits.TrySetValue" );
-                  return false;
-               }
-            }
+               Print("Errore chiusura posizione ", ticket, ": codice=", _trade.ResultRetcode());
          }
-      }
-      return true;
-   }
-
-   double profitAllPositions()
-   {
-      double profit=0.0;
-
-      for(int i=PositionsTotal()-1; i>=0; i--)
-      {
-         if(_myPositionInfo.SelectByIndex(i))
+         else
          {
-            profit+=_myPositionInfo.Commission()+_myPositionInfo.Swap()+_myPositionInfo.Profit();
+            previousProfits.TrySetValue(ticket, profit);
          }
       }
-      return(profit);
-   }
-
-   bool checkAndCloseAllOrdersForProfit()
-   {
-      if(PositionSelect(_symbolName))
-      {
-         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-         double currentPrice = 0.0;
-         double profit = 0.0;
-
-         if(profitAllPositions() > _closeInProfit)
-         {
-            Print("Garbage collector active!");
-            if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
-            {
-               closeSellPosition();
-            }
-            if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
-            {
-               closeBuyPosition();
-            }
-            return true;
-         }
-      }
-      return false;
-   }
-
-   int openPos()
-   {
-      int total=PositionsTotal();
-      int count=0;
-      for(int cnt=0; cnt<total; cnt++)
-      {
-         if(PositionSelect(_symbolName))
-         {
-            count++;
-         }
-      }
-      return(count);
-   }
-
-   double calculateCurrentRisk()
-   {
-      double totalRisk = 0.0;
-
-      Print("OrdersTotal: ", OrdersTotal());
-
-      for(int i = 0; i < openPos(); i++)
-      {
-         if(OrderGetTicket(i)>0 && OrderGetString(ORDER_SYMBOL) == _symbolName)
-         {
-            totalRisk += AccountInfoDouble(ACCOUNT_MARGIN);
-         }
-      }
-
-      return totalRisk;
    }
 
    bool openBuyOrder()
    {
-      double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
-      double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
-      if(_trade.Buy(_lotSize, _symbolName))
+      double ask   = SymbolInfoDouble(_symbolName, SYMBOL_ASK);
+      double point = SymbolInfoDouble(_symbolName, SYMBOL_POINT);
+      double sl    = (_stopLoss   > 0) ? NormalizeDouble(ask - _stopLoss   * point, _Digits) : 0;
+      double tp    = (_takeProfit > 0) ? NormalizeDouble(ask + _takeProfit * point, _Digits) : 0;
+
+      if(_trade.Buy(_lotSize, _symbolName, ask, sl, tp))
       {
-         Print("Buy order placed.");
+         Print("BUY aperto | Ask=", ask, " SL=", sl, " TP=", tp);
          return true;
       }
-      else
-      {
-         Print("Buy order failed: ", GetLastError());
-         return false;
-      }
+      Print("BUY fallito: ", GetLastError());
+      return false;
    }
 
    bool openSellOrder()
    {
-      double Bid=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_BID),_Digits);
-      double Ask=NormalizeDouble(SymbolInfoDouble(_symbolName,SYMBOL_ASK),_Digits);
-      if(_trade.Sell(_lotSize, _symbolName))
+      double bid   = SymbolInfoDouble(_symbolName, SYMBOL_BID);
+      double point = SymbolInfoDouble(_symbolName, SYMBOL_POINT);
+      double sl    = (_stopLoss   > 0) ? NormalizeDouble(bid + _stopLoss   * point, _Digits) : 0;
+      double tp    = (_takeProfit > 0) ? NormalizeDouble(bid - _takeProfit * point, _Digits) : 0;
+
+      if(_trade.Sell(_lotSize, _symbolName, bid, sl, tp))
       {
-         Print("Sell order placed.");
+         Print("SELL aperto | Bid=", bid, " SL=", sl, " TP=", tp);
          return true;
       }
-      else
-      {
-         Print("Sell order failed: ", GetLastError());
-         return false;
-      }
+      Print("SELL fallito: ", GetLastError());
+      return false;
    }
 
-   void closeBuyPosition()
+   void closeBuyPositions()
    {
-      for(int i=PositionsTotal()-1; i >= 0; i--)
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
       {
-         if(_myPositionInfo.SelectByIndex(i) && PositionGetInteger(POSITION_TYPE) == ORDER_TYPE_BUY && PositionGetString(POSITION_SYMBOL) == _symbolName)
+         if(_myPositionInfo.SelectByIndex(i) &&
+            _myPositionInfo.Type()   == POSITION_TYPE_BUY &&
+            _myPositionInfo.Symbol() == _symbolName)
          {
             ulong ticket = _myPositionInfo.Ticket();
-            if(!_trade.PositionClose(ticket))
-            {
-               Print("Error closing buy order: ");
-            }
-            else
-            {
-               Print("CloseBuyOrder with ticket: ", ticket);
+            if(_trade.PositionClose(ticket))
                previousProfits.Remove(ticket);
-            }
          }
       }
    }
 
-   void closeSellPosition()
+   void closeSellPositions()
    {
-      for(int i=PositionsTotal()-1; i >= 0; i--)
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
       {
-         if(_myPositionInfo.SelectByIndex(i) && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL &&  PositionGetString(POSITION_SYMBOL) == _symbolName)
+         if(_myPositionInfo.SelectByIndex(i) &&
+            _myPositionInfo.Type()   == POSITION_TYPE_SELL &&
+            _myPositionInfo.Symbol() == _symbolName)
          {
-            ulong ticket;
-            ticket = _myPositionInfo.Ticket();
-
-            if(!_trade.PositionClose(ticket))
-               Print("Error closing sell order: ");
-            else
-            {
-               Print("CloseSellOrder with ticket: ", ticket);
+            ulong ticket = _myPositionInfo.Ticket();
+            if(_trade.PositionClose(ticket))
                previousProfits.Remove(ticket);
-            }
          }
       }
    }
 
-   void closeAllPosition()
+   void closeAllPositions()
    {
-      closeSellPosition();
-      closeBuyPosition();
+      closeSellPositions();
+      closeBuyPositions();
    }
 
    ~Currency()
    {
-      // Release indicator handles
       IndicatorRelease(handle_macd);
       IndicatorRelease(handle_rsi);
       IndicatorRelease(handle_stoch);
       IndicatorRelease(handle_adx);
    }
 };
-//+------------------------------------------------------------------+
-
