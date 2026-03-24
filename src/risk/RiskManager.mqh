@@ -53,6 +53,11 @@ public:
    // Calcola lot size in base al rischio e alla distanza SL
    double CalcLotSize(double slPrice, double entryPrice);
 
+   // Calcola lot size con Kelly Criterion (half-Kelly per sicurezza)
+   // probWin  = probabilità di vincita stimata (0-1)
+   // rrRatio  = reward/risk ratio (es. 2.0 per 1:2)
+   double CalcKellyLotSize(double slPrice, double entryPrice, double probWin, double rrRatio = 2.0);
+
    // Stato
    double GetCurrentDrawdown();       // 0.0 - 1.0
    double GetDailyPnLPct();           // positivo = profitto
@@ -205,6 +210,36 @@ double RiskManager::CalcLotSize(double slPrice, double entryPrice)
    double lots = riskAmount / riskPerLot;
    lots = MathFloor(lots / lotStep) * lotStep;
    lots = MathMax(lotMin, MathMin(lotMax, lots));
+
+   return lots;
+}
+
+double RiskManager::CalcKellyLotSize(double slPrice, double entryPrice, double probWin, double rrRatio)
+{
+   // Sanity checks
+   probWin = MathMax(0.01, MathMin(0.99, probWin));
+   rrRatio = MathMax(0.1, rrRatio);
+
+   // Kelly fraction: f* = (p*b - q) / b
+   //   p = probWin, q = 1 - p, b = rrRatio
+   double p = probWin;
+   double q = 1.0 - p;
+   double kelly = (p * rrRatio - q) / rrRatio;
+
+   // Se Kelly negativo → edge negativo → non tradare
+   if(kelly <= 0.0) return 0.0;
+
+   // Half-Kelly per ridurre rischio di rovina
+   kelly *= 0.5;
+
+   // Cap a 3× rischio base (safety ceiling)
+   kelly = MathMin(kelly, 3.0 * _riskPerTrade);
+
+   // Usa Kelly come frazione del balance per il sizing
+   double savedRisk = _riskPerTrade;
+   _riskPerTrade    = kelly;
+   double lots      = CalcLotSize(slPrice, entryPrice);
+   _riskPerTrade    = savedRisk;
 
    return lots;
 }

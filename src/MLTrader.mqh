@@ -1,11 +1,13 @@
 //+------------------------------------------------------------------+
 //| MLTrader.mqh                                                     |
-//| Orchestratore principale: coordina FeatureEngine, NeuralNetwork, |
-//| RiskManager e OrderManager.                                      |
-//|                                                                  |
-//| Pipeline:                                                        |
-//|   Init():  raccoglie storico → costruisce dataset → addestra NN  |
-//|   Run():   estrae feature → predice → filtra → esegue ordine     |
+//| Orchestratore principale v4.0 — tutte le 7 migliorie applicate:  |
+//|   1. Label profittabilità TP/SL forward scan                     |
+//|   2. Ensemble di 3 modelli con finestre storiche diverse          |
+//|   3. Walk-forward retraining ogni N barre                        |
+//|   4. RegimeDetector (TREND/RANGE/VOLATILE)                       |
+//|   5. Kelly Criterion per position sizing                          |
+//|   6. Feature avanzate (80 features)                              |
+//|   7. Script backtest separato (Backtest.mq5)                     |
 //+------------------------------------------------------------------+
 #pragma once
 
@@ -13,36 +15,49 @@
 #include "features/FeatureEngine.mqh"
 #include "risk/RiskManager.mqh"
 #include "execution/OrderManager.mqh"
+#include "regime/RegimeDetector.mqh"
 
 // Variabili globali per timeout (definite in main.mq5)
 extern bool GTimeoutBuy;
 extern bool GTimeoutSell;
 
-// Soglie di confidenza per aprire un trade
+// Soglie di confidenza
 #define SIGNAL_BUY_THRESHOLD  0.65
 #define SIGNAL_SELL_THRESHOLD 0.65
-#define SIGNAL_OPPOSE_MAX     0.40  // output opposto deve essere basso
+#define SIGNAL_OPPOSE_MAX     0.40
+
+// Ensemble: 3 modelli con pesi di confidenza per recency
+#define ENSEMBLE_SIZE         3
+static const double ENSEMBLE_WEIGHTS[ENSEMBLE_SIZE] = {0.5, 0.3, 0.2};
 
 class MLTrader
 {
 private:
-   NeuralNetwork  _nn;
-   FeatureEngine  _fe;
-   RiskManager    _rm;
-   OrderManager   _om;
+   NeuralNetwork  *_models[ENSEMBLE_SIZE]; // puntatori per poter ricreare
+   FeatureEngine   _fe;
+   RiskManager     _rm;
+   OrderManager    _om;
+   RegimeDetector  _rd;
 
-   string  _sym;
-   int     _maxPositions;
-   double  _closeProfitUSD;
-   int     _trainEpochs;
-   int     _trainSamples;
-   int     _earlyStopping;
+   string   _sym;
+   int      _maxPositions;
+   double   _closeProfitUSD;
+   int      _trainEpochs;
+   int      _trainSamples;
+   int      _earlyStopping;
+   double   _learningRate;
+   double   _slAtrMult;         // moltiplicatore ATR per SL nelle label
+   double   _tpAtrMult;         // moltiplicatore ATR per TP nelle label
+   int      _maxForwardBars;    // max barre avanti per label scan
+   int      _retrainEveryBars;  // walk-forward: ogni quante barre riallena
 
-   datetime _lastBarTime; // per eseguire segnali solo su nuova barra
+   int      _hATR_label;        // ATR(14, M30) per generare label
+   datetime _lastBarTime;
+   int      _barsSinceRetrain;
 
 public:
    MLTrader();
-   ~MLTrader() {}
+   ~MLTrader();
 
    bool Init(string symbol,
              ulong  magic,
@@ -55,197 +70,363 @@ public:
              double maxSpreadPips,
              double closeProfitUSD,
              int    maxPositions,
-             int    earlyStopping);
+             int    earlyStopping,
+             double slAtrMult       = 1.0,
+             double tpAtrMult       = 2.0,
+             int    maxForwardBars  = 20,
+             int    retrainEveryBars = 500);
 
-   void Run();    // chiamato ogni tick
-   void OnTimer();// chiamato ogni N minuti per reset timeout
+   void Run();      // chiamato ogni tick
+   void OnTimer();  // chiamato ogni N minuti per reset timeout
 
 private:
-   bool BuildAndTrainModel(double lr, double l2 = 1e-5, double clipNorm = 1.0);
+   // Dataset con label profittabilità TP/SL
+   bool BuildDataset(int offsetStart, int numSamples,
+                     double &inputs[], double &targets[]);
+
+   // Allena tutti e 3 i modelli su finestre storiche diverse
+   bool TrainEnsemble();
+
+   // Predizione media pesata dell'ensemble
+   void GetEnsemblePrediction(double &features[], double &probBuy, double &probSell);
+
+   // Check e trigger walk-forward retraining
+   void CheckAndRetrain();
+
    bool ShouldActOnNewBar();
+   void ReleaseModels();
 };
 
+//--- Costruttore / Distruttore
 MLTrader::MLTrader()
 {
-   _sym          = "";
-   _maxPositions = 3;
-   _closeProfitUSD = 10.0;
-   _trainEpochs  = 500;
-   _trainSamples = 2000;
-   _earlyStopping = 50;
-   _lastBarTime  = 0;
+   _sym             = "";
+   _maxPositions    = 3;
+   _closeProfitUSD  = 10.0;
+   _trainEpochs     = 500;
+   _trainSamples    = 2000;
+   _earlyStopping   = 50;
+   _learningRate    = 0.001;
+   _slAtrMult       = 1.0;
+   _tpAtrMult       = 2.0;
+   _maxForwardBars  = 20;
+   _retrainEveryBars = 500;
+   _hATR_label      = INVALID_HANDLE;
+   _lastBarTime     = 0;
+   _barsSinceRetrain = 0;
+
+   for(int i = 0; i < ENSEMBLE_SIZE; i++)
+      _models[i] = NULL;
 }
 
+MLTrader::~MLTrader()
+{
+   ReleaseModels();
+   if(_hATR_label != INVALID_HANDLE) IndicatorRelease(_hATR_label);
+}
+
+void MLTrader::ReleaseModels()
+{
+   for(int i = 0; i < ENSEMBLE_SIZE; i++)
+   {
+      if(_models[i] != NULL) { delete _models[i]; _models[i] = NULL; }
+   }
+}
+
+//--- Inizializzazione
 bool MLTrader::Init(string symbol, ulong magic,
-                    int    trainEpochs, int trainSamples, double learningRate,
+                    int trainEpochs, int trainSamples, double learningRate,
                     double riskPerTrade, double maxDailyLoss, double maxDrawdown,
                     double maxSpreadPips, double closeProfitUSD,
-                    int maxPositions, int earlyStopping)
+                    int maxPositions, int earlyStopping,
+                    double slAtrMult, double tpAtrMult,
+                    int maxForwardBars, int retrainEveryBars)
 {
-   _sym           = symbol;
-   _trainEpochs   = trainEpochs;
-   _trainSamples  = trainSamples;
-   _maxPositions  = maxPositions;
-   _closeProfitUSD = closeProfitUSD;
-   _earlyStopping = earlyStopping;
+   _sym              = symbol;
+   _trainEpochs      = trainEpochs;
+   _trainSamples     = trainSamples;
+   _learningRate     = learningRate;
+   _maxPositions     = maxPositions;
+   _closeProfitUSD   = closeProfitUSD;
+   _earlyStopping    = earlyStopping;
+   _slAtrMult        = slAtrMult;
+   _tpAtrMult        = tpAtrMult;
+   _maxForwardBars   = maxForwardBars;
+   _retrainEveryBars = retrainEveryBars;
 
-   // Feature engine
+   // ATR per label generation (M30, period 14)
+   _hATR_label = iATR(symbol, PERIOD_M30, 14);
+   if(_hATR_label == INVALID_HANDLE)
+   {
+      Print("MLTrader: impossibile creare handle ATR label");
+      return false;
+   }
+
    if(!_fe.Init(symbol))
    {
       Print("MLTrader: FeatureEngine init fallito");
       return false;
    }
 
-   // Risk manager
    if(!_rm.Init(symbol, riskPerTrade, maxDailyLoss, maxDrawdown))
    {
       Print("MLTrader: RiskManager init fallito");
       return false;
    }
 
-   // Order manager
    if(!_om.Init(symbol, magic, maxSpreadPips))
    {
       Print("MLTrader: OrderManager init fallito");
       return false;
    }
 
-   // Attesa valorizzazione indicatori
-   Sleep(5000);
-
-   // Costruisce e addestra il modello
-   if(!BuildAndTrainModel(learningRate))
+   if(!_rd.Init(symbol))
    {
-      Print("MLTrader: training fallito");
+      Print("MLTrader: RegimeDetector init fallito");
       return false;
    }
 
-   Print("MLTrader inizializzato | sym=", symbol, " features=", _fe.FeatureCount());
+   Sleep(5000); // attesa valorizzazione indicatori
+
+   if(!TrainEnsemble())
+   {
+      Print("MLTrader: TrainEnsemble fallito");
+      return false;
+   }
+
+   Print("MLTrader v4 inizializzato | sym=", symbol,
+         " features=", _fe.FeatureCount(),
+         " ensemble=", ENSEMBLE_SIZE);
    return true;
 }
 
-//--- Costruisce dataset storico e addestra la rete
-bool MLTrader::BuildAndTrainModel(double lr, double l2, double clipNorm)
+//+------------------------------------------------------------------+
+//| Costruisce dataset con label profittabilità TP/SL forward scan   |
+//+------------------------------------------------------------------+
+bool MLTrader::BuildDataset(int offsetStart, int numSamples,
+                             double &inputs[], double &targets[])
 {
-   int featureCount = _fe.FeatureCount(); // FE_TOTAL = 76
-   int lookback     = FE_M30_BARS;        // barre usate nel passato più recente per etichetta
+   int featureCount = _fe.FeatureCount();
+   int lookback     = FE_M30_BARS;
 
-   // Quante barre M30 servono:
-   //   trainSamples campioni + lookback per il buffer + 2 extra
-   int neededBars = _trainSamples + lookback + 2;
-
-   // Verifica disponibilità dati storici
    int available = Bars(_sym, PERIOD_M30);
-   if(available < neededBars)
+   int needed    = offsetStart + numSamples + lookback + _maxForwardBars + 5;
+   if(available < needed)
    {
-      Print("MLTrader: dati insufficienti (", available, " < ", neededBars, ")");
+      Print("BuildDataset: dati insufficienti (", available, " < ", needed, ")");
       return false;
    }
 
-   int N = MathMin(_trainSamples, available - lookback - 2);
-   Print("MLTrader: costruzione dataset | N=", N, " features=", featureCount);
-
-   double inputs[];
-   double targets[];
+   int N = numSamples;
    ArrayResize(inputs,  N * featureCount);
    ArrayResize(targets, N * 2);
    ArrayInitialize(inputs,  0.0);
    ArrayInitialize(targets, 0.0);
 
-   // Close prices per generare le label (direzione della barra successiva)
-   double close_buf[];
+   // Carica buffer OHLC per forward scan
+   int bufSize = N + offsetStart + lookback + _maxForwardBars + 5;
+   double high_buf[], low_buf[], close_buf[], atr_buf[];
+   ArraySetAsSeries(high_buf,  true);
+   ArraySetAsSeries(low_buf,   true);
    ArraySetAsSeries(close_buf, true);
-   int closesNeeded = N + lookback + 2;
-   if(CopyClose(_sym, PERIOD_M30, 1, closesNeeded, close_buf) <= 0)
+   ArraySetAsSeries(atr_buf,   true);
+
+   if(CopyHigh (_sym, PERIOD_M30, 1, bufSize, high_buf)  <= 0 ||
+      CopyLow  (_sym, PERIOD_M30, 1, bufSize, low_buf)   <= 0 ||
+      CopyClose(_sym, PERIOD_M30, 1, bufSize, close_buf) <= 0 ||
+      CopyBuffer(_hATR_label, 0, 1, bufSize, atr_buf)    <= 0)
    {
-      Print("MLTrader: CopyClose fallito");
+      Print("BuildDataset: CopyBuffer fallito");
       return false;
    }
 
-   int buyCount = 0, sellCount = 0, holdCount = 0;
-   int failCount = 0;
+   int buyCount = 0, sellCount = 0, noneCount = 0, failCount = 0;
 
-   // Per ogni campione k (0..N-1):
-   //   - Usa ExtractHistorical(k+1) → finestra storica k+1 barre fa
-   //   - Label: close_buf[k] vs close_buf[k+1]  (barra k vs barra k+1 in series)
-   //     In series: close_buf[k] è più recente di close_buf[k+1]
-   //     close_buf[k] > close_buf[k+1] → barra k salita → BUY [1,0]
    for(int k = 0; k < N; k++)
    {
+      int barIdx = k + offsetStart; // indice nel buffer (0 = barra più recente)
+
       double feats[];
-      if(!_fe.ExtractHistorical(k + 1, feats))
+      if(!_fe.ExtractHistorical(barIdx + 1, feats))
       {
          failCount++;
-         if(failCount > 10) { Print("MLTrader: troppi errori feature extraction"); return false; }
+         if(failCount > 20) { Print("BuildDataset: troppi errori feature"); return false; }
+         // inserisce zero-features per questo campione, nessuna label
          continue;
       }
 
+      // Copia features
       int fOff = k * featureCount;
-      int tOff = k * 2;
       ArrayCopy(inputs, feats, fOff, 0, featureCount);
 
-      // Label forward-looking
-      if(k < ArraySize(close_buf) - 1)
+      // Calcola ATR alla barra barIdx per SL/TP
+      double atrVal = (barIdx < ArraySize(atr_buf) && atr_buf[barIdx] > 1e-10)
+                      ? atr_buf[barIdx] : 10 * SymbolInfoDouble(_sym, SYMBOL_POINT);
+
+      double entryClose = close_buf[barIdx];
+      double buyTP  = entryClose + atrVal * _tpAtrMult;
+      double buySL  = entryClose - atrVal * _slAtrMult;
+      double sellTP = entryClose - atrVal * _tpAtrMult;
+      double sellSL = entryClose + atrVal * _slAtrMult;
+
+      // Forward scan — controlla quale livello viene toccato prima
+      // In ArraySetAsSeries(true): indice 0 = barra più recente
+      // barIdx-1 è la barra successiva (più recente)
+      bool buyWins  = false, buyLoses  = false;
+      bool sellWins = false, sellLoses = false;
+
+      for(int f = 1; f <= _maxForwardBars; f++)
       {
-         if(close_buf[k] > close_buf[k + 1])
+         int fi = barIdx - f; // barra f step avanti
+         if(fi < 0 || fi >= ArraySize(high_buf)) break;
+
+         double h = high_buf[fi];
+         double l = low_buf[fi];
+
+         if(!buyWins  && !buyLoses)
          {
-            targets[tOff]     = 1.0; targets[tOff + 1] = 0.0; buyCount++;
+            if(h >= buyTP)  buyWins  = true;
+            if(l <= buySL)  buyLoses = true;
          }
-         else if(close_buf[k] < close_buf[k + 1])
+         if(!sellWins && !sellLoses)
          {
-            targets[tOff]     = 0.0; targets[tOff + 1] = 1.0; sellCount++;
+            if(l <= sellTP) sellWins  = true;
+            if(h >= sellSL) sellLoses = true;
          }
-         else
-         {
-            targets[tOff]     = 0.0; targets[tOff + 1] = 0.0; holdCount++;
-         }
+         if((buyWins || buyLoses) && (sellWins || sellLoses)) break;
       }
+
+      // Assegna label
+      int tOff = k * 2;
+      double buyLabel  = buyWins  ? 1.0 : 0.0;
+      double sellLabel = sellWins ? 1.0 : 0.0;
+
+      targets[tOff]     = buyLabel;
+      targets[tOff + 1] = sellLabel;
+
+      if(buyWins)  buyCount++;
+      else if(sellWins) sellCount++;
+      else noneCount++;
    }
 
-   Print("Dataset: BUY=", buyCount, " SELL=", sellCount, " HOLD=", holdCount,
-         " | Balance BUY/SELL: ", DoubleToString((double)buyCount / MathMax(1, sellCount), 2));
-
-   // Costruisce rete neurale: 76 → 128 → 64 → 32 → 2
-   int layers[] = {featureCount, 128, 64, 32, 2};
-   int nLayers  = ArraySize(layers);
-   _nn = NeuralNetwork(lr, 0.9, 0.999, 1e-8, l2, clipNorm);
-   if(!_nn.BuildModel(layers, nLayers))
-   {
-      Print("MLTrader: BuildModel fallito");
-      return false;
-   }
-
-   _nn.Train(inputs, targets, _trainEpochs, _earlyStopping);
+   Print("Dataset[offset=", offsetStart, "]: BUY=", buyCount,
+         " SELL=", sellCount, " NONE=", noneCount,
+         " ratio=", DoubleToString((double)buyCount / MathMax(1, sellCount), 2));
    return true;
 }
 
-//--- Eseguito ogni tick
-void MLTrader::Run()
+//+------------------------------------------------------------------+
+//| Allena i 3 modelli dell'ensemble su finestre storiche diverse    |
+//+------------------------------------------------------------------+
+bool MLTrader::TrainEnsemble()
 {
-   // Aggiorna risk manager
-   _rm.Update();
+   ReleaseModels();
 
-   // Gestione trailing stop sulle posizioni aperte (ogni tick)
-   _om.ManageOpenPositions();
+   int featureCount = _fe.FeatureCount();
+   int layers[]     = {featureCount, 128, 64, 32, 2};
+   int nLayers      = ArraySize(layers);
 
-   // Chiudi posizioni profittevoli
-   _om.CloseProfitable(_closeProfitUSD);
+   // Finestre: [0] più recente, [1] media, [2] più vecchia
+   // Ogni modello usa _trainSamples/3 campioni da sezioni diverse
+   int samplesPerModel = MathMax(200, _trainSamples / 3);
 
-   // Segnali solo su nuova barra M30 (evita rumore infrabar)
-   if(!ShouldActOnNewBar()) return;
-
-   // Risk check
-   if(!_rm.CanTrade())
+   for(int m = 0; m < ENSEMBLE_SIZE; m++)
    {
-      // Non loggare ogni tick per non intasare
-      return;
+      int offset = m * samplesPerModel; // scorrimento nella storia
+
+      double inputs[], targets[];
+      if(!BuildDataset(offset, samplesPerModel, inputs, targets))
+      {
+         Print("TrainEnsemble: BuildDataset fallito per modello ", m);
+         return false;
+      }
+
+      _models[m] = new NeuralNetwork(_learningRate, 0.9, 0.999, 1e-8, 1e-5, 1.0);
+      if(!_models[m].BuildModel(layers, nLayers))
+      {
+         Print("TrainEnsemble: BuildModel fallito per modello ", m);
+         return false;
+      }
+
+      _models[m].Train(inputs, targets, _trainEpochs, _earlyStopping);
+      Print("Ensemble modello ", m, " addestrato (offset=", offset, ")");
    }
 
-   // Filtro sessione + spread
-   if(!_om.CanOpenNew()) return;
+   _barsSinceRetrain = 0;
+   return true;
+}
 
-   // Limite posizioni aperte
+//+------------------------------------------------------------------+
+//| Predizione ensemble: media pesata delle 3 reti                   |
+//+------------------------------------------------------------------+
+void MLTrader::GetEnsemblePrediction(double &features[], double &probBuy, double &probSell)
+{
+   probBuy  = 0.0;
+   probSell = 0.0;
+   double totalW = 0.0;
+
+   for(int m = 0; m < ENSEMBLE_SIZE; m++)
+   {
+      if(_models[m] == NULL) continue;
+
+      _models[m].FeedForward(features);
+      double out[];
+      _models[m].GetOutputs(out);
+      if(ArraySize(out) < 2) continue;
+
+      double w = ENSEMBLE_WEIGHTS[m];
+      probBuy  += w * out[0];
+      probSell += w * out[1];
+      totalW   += w;
+   }
+
+   if(totalW > 1e-10) { probBuy /= totalW; probSell /= totalW; }
+}
+
+//+------------------------------------------------------------------+
+//| Walk-forward: riallena se sono trascorse abbastanza barre        |
+//+------------------------------------------------------------------+
+void MLTrader::CheckAndRetrain()
+{
+   if(_barsSinceRetrain >= _retrainEveryBars)
+   {
+      Print("MLTrader: avvio walk-forward retraining (barre=", _barsSinceRetrain, ")");
+      if(TrainEnsemble())
+         Print("MLTrader: retraining completato");
+      else
+         Print("MLTrader: retraining fallito — mantengo modelli precedenti");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Run — chiamato ogni tick                                          |
+//+------------------------------------------------------------------+
+void MLTrader::Run()
+{
+   _rm.Update();
+   _om.ManageOpenPositions();
+   _om.CloseProfitable(_closeProfitUSD);
+
+   if(!ShouldActOnNewBar()) return;
+
+   _barsSinceRetrain++;
+   CheckAndRetrain();
+
+   if(!_rm.CanTrade())   return;
+   if(!_om.CanOpenNew()) return;
    if(_om.CountPositions() >= _maxPositions) return;
+
+   // Regime filter — salta se mercato volatile
+   ENUM_MARKET_REGIME regime = _rd.Detect();
+   if(regime == REGIME_VOLATILE)
+   {
+      static int volatileCount = 0;
+      if(++volatileCount % 20 == 0)
+         Print("MLTrader: regime VOLATILE — trade sospesi (ADX=",
+               DoubleToString(_rd.GetADX(), 1),
+               " ATRratio=", DoubleToString(_rd.GetATRRatio(), 2), ")");
+      return;
+   }
 
    // Estrae feature correnti
    double features[];
@@ -255,39 +436,48 @@ void MLTrader::Run()
       return;
    }
 
-   // Predizione
-   _nn.FeedForward(features);
-   double output[];
-   _nn.GetOutputs(output);
-
-   if(ArraySize(output) < 2) return;
-
-   double probBuy  = output[0];
-   double probSell = output[1];
+   // Predizione ensemble
+   double probBuy, probSell;
+   GetEnsemblePrediction(features, probBuy, probSell);
 
    // Segnale BUY
    if(probBuy >= SIGNAL_BUY_THRESHOLD && probSell <= SIGNAL_OPPOSE_MAX && GTimeoutBuy)
    {
-      double sl = _rm.CalcStopLossPrice(ORDER_TYPE_BUY);
+      double sl  = _rm.CalcStopLossPrice(ORDER_TYPE_BUY);
       double ask = SymbolInfoDouble(_sym, SYMBOL_ASK);
-      double tp  = ask + MathAbs(ask - sl) * 2.0; // R:R = 1:2
+      double tp  = ask + MathAbs(ask - sl) * (_tpAtrMult / _slAtrMult);
       tp = NormalizeDouble(tp, (int)SymbolInfoInteger(_sym, SYMBOL_DIGITS));
 
-      double lots = _rm.CalcLotSize(sl, ask);
-      if(_om.OpenBuy(lots, sl, tp, StringFormat("ML BUY %.2f", probBuy)))
+      // Kelly sizing: usa probBuy come stima di probWin
+      double lots = _rm.CalcKellyLotSize(sl, ask, probBuy, _tpAtrMult / _slAtrMult);
+      if(lots <= 0) lots = _rm.CalcLotSize(sl, ask); // fallback
+
+      if(_om.OpenBuy(lots, sl, tp, StringFormat("ML BUY %.2f [%s]", probBuy, _rd.ToString(regime))))
+      {
          GTimeoutBuy = false;
+         Print("BUY aperto | pBuy=", DoubleToString(probBuy, 3),
+               " lots=", DoubleToString(lots, 2),
+               " regime=", _rd.ToString(regime));
+      }
    }
    // Segnale SELL
    else if(probSell >= SIGNAL_SELL_THRESHOLD && probBuy <= SIGNAL_OPPOSE_MAX && GTimeoutSell)
    {
-      double sl = _rm.CalcStopLossPrice(ORDER_TYPE_SELL);
+      double sl  = _rm.CalcStopLossPrice(ORDER_TYPE_SELL);
       double bid = SymbolInfoDouble(_sym, SYMBOL_BID);
-      double tp  = bid - MathAbs(sl - bid) * 2.0; // R:R = 1:2
+      double tp  = bid - MathAbs(sl - bid) * (_tpAtrMult / _slAtrMult);
       tp = NormalizeDouble(tp, (int)SymbolInfoInteger(_sym, SYMBOL_DIGITS));
 
-      double lots = _rm.CalcLotSize(sl, bid);
-      if(_om.OpenSell(lots, sl, tp, StringFormat("ML SELL %.2f", probSell)))
+      double lots = _rm.CalcKellyLotSize(sl, bid, probSell, _tpAtrMult / _slAtrMult);
+      if(lots <= 0) lots = _rm.CalcLotSize(sl, bid);
+
+      if(_om.OpenSell(lots, sl, tp, StringFormat("ML SELL %.2f [%s]", probSell, _rd.ToString(regime))))
+      {
          GTimeoutSell = false;
+         Print("SELL aperto | pSell=", DoubleToString(probSell, 3),
+               " lots=", DoubleToString(lots, 2),
+               " regime=", _rd.ToString(regime));
+      }
    }
 
    // Log periodico
@@ -298,6 +488,7 @@ void MLTrader::Run()
             " pSell=", DoubleToString(probSell, 3),
             " pos=", _om.CountPositions(),
             " PnL=", DoubleToString(_om.TotalFloatingPnL(), 2),
+            " regime=", _rd.ToString(regime),
             " | ", _rm.GetStatusString());
    }
 }
@@ -308,7 +499,6 @@ void MLTrader::OnTimer()
    GTimeoutSell = true;
 }
 
-//--- Restituisce true solo alla prima chiamata di ogni nuova barra M30
 bool MLTrader::ShouldActOnNewBar()
 {
    datetime barTime = iTime(_sym, PERIOD_M30, 1);
