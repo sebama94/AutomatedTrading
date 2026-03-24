@@ -1,84 +1,85 @@
 //+------------------------------------------------------------------+
 //|                                                         main.mq5 |
-//|                        Copyright 2023, MetaQuotes Software Corp. |
-//|                                             https://www.mql5.com |
+//|                     ML Trading System v3.0                       |
+//|                                                                  |
+//| Architettura:                                                     |
+//|   FeatureEngine  → 76 feature da M30 + H1 + H4 + tempo          |
+//|   NeuralNetwork  → 76→128→64→32→2 con Adam + early stopping      |
+//|   RiskManager    → ATR sizing + drawdown + daily loss circuit     |
+//|   OrderManager   → spread/sessione filter + trailing stop ATR    |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2023, MetaQuotes Software Corp."
-#property link      "https://www.mql5.com"
-#property version   "2.00"
+#property copyright "2024"
+#property version   "3.00"
+#property strict
 
-#include "Currency.mqh"
+#include "src/MLTrader.mqh"
 
-//--- Network architecture
-//    inputNeurons DEVE essere divisibile per 6 (features per bar)
-//    Ex: 30 = 5 lookback bars * 6 features
-input int    InpInputNeurons   = 30;   // Input neurons (multiplo di 6)
-input int    InpHiddenNeurons1 = 64;   // Hidden layer 1
-input int    InpHiddenNeurons2 = 32;   // Hidden layer 2
-input int    InpHiddenNeurons3 = 16;   // Hidden layer 3
-input int    InpOutputNeurons  = 2;    // Output neurons: [Buy, Sell]
+//=== PARAMETRI TRADING ===
+input string   InpSymbol        = "EURUSD";  // Simbolo
+input ulong    InpMagic         = 20240001;  // Magic number EA
 
-//--- Training
-input int    InpTrainingEpochs = 500;   // Epoche di training
-input double InpLearningRate   = 0.001; // Learning rate
-input int    InpNumberOfData   = 2000;  // Campioni di training
+//=== PARAMETRI TRAINING ===
+input int      InpEpochs        = 500;       // Epoche di training
+input int      InpTrainSamples  = 2000;      // Campioni di training
+input double   InpLearningRate  = 0.001;     // Learning rate Adam
+input int      InpEarlyStopping = 50;        // Patience early stopping
 
-//--- Trading
-input string InpSymbolName     = "EURUSD"; // Simbolo
-input double InpLotSize        = 0.01;     // Lotto
-input double InpStopLoss       = 50;       // Stop Loss in punti (0 = disabilitato)
-input double InpTakeProfit     = 100;      // Take Profit in punti (0 = disabilitato)
-input double InpCloseInProfit  = 5.0;      // Chiudi posizione a profitto ($)
-input double InpMaxRiskPct     = 0.02;     // Rischio max (frazione del balance, es. 0.02 = 2%)
-input int    InpMaxPositions   = 3;        // Posizioni aperte massime simultanee
+//=== RISK MANAGEMENT ===
+input double   InpRiskPerTrade  = 0.01;      // Rischio per trade (1% del balance)
+input double   InpMaxDailyLoss  = 0.03;      // Perdita max giornaliera (3%)
+input double   InpMaxDrawdown   = 0.10;      // Drawdown max circuit breaker (10%)
 
-bool GlobaltimeOutExpiredBuy  = true;
-bool GlobaltimeOutExpiredSell = true;
+//=== ESECUZIONE ===
+input double   InpMaxSpreadPips = 2.0;       // Spread massimo in pips
+input double   InpCloseProfitUSD = 10.0;     // Chiudi posizione a profitto ($)
+input int      InpMaxPositions  = 3;         // Posizioni simultanee massime
 
-Currency *currency;
+//=== TIMER ===
+input int      InpTimeoutMinutes = 30;       // Minuti tra un trade e l'altro per direzione
+
+// Variabili globali timeout (lette da MLTrader)
+bool GTimeoutBuy  = true;
+bool GTimeoutSell = true;
+
+MLTrader *trader;
 
 int OnInit()
 {
-   EventSetTimer(60 * 30); // resetta il timeout ogni 30 minuti
+   EventSetTimer(InpTimeoutMinutes * 60);
 
-   if(InpInputNeurons % 6 != 0)
+   trader = new MLTrader();
+   if(!trader.Init(InpSymbol,
+                   InpMagic,
+                   InpEpochs,
+                   InpTrainSamples,
+                   InpLearningRate,
+                   InpRiskPerTrade,
+                   InpMaxDailyLoss,
+                   InpMaxDrawdown,
+                   InpMaxSpreadPips,
+                   InpCloseProfitUSD,
+                   InpMaxPositions,
+                   InpEarlyStopping))
    {
-      Print("Errore: InpInputNeurons (", InpInputNeurons, ") deve essere divisibile per 6");
-      return INIT_PARAMETERS_INCORRECT;
-   }
-
-   int layers[]  = {InpInputNeurons, InpHiddenNeurons1, InpHiddenNeurons2, InpHiddenNeurons3, InpOutputNeurons};
-   int numLayers = ArraySize(layers);
-
-   currency = new Currency(layers, numLayers,
-                           InpTrainingEpochs, InpLearningRate,
-                           InpSymbolName, InpLotSize,
-                           InpCloseInProfit, InpNumberOfData,
-                           InpStopLoss, InpTakeProfit, InpMaxPositions);
-
-   if(!currency.Init())
-   {
-      Print("Inizializzazione Currency fallita");
+      Print("Inizializzazione fallita");
       return INIT_FAILED;
    }
 
-   Print("Inizializzazione completata con successo.");
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason)
 {
-   delete currency;
+   EventKillTimer();
+   delete trader;
 }
 
 void OnTick()
 {
-   double maxRiskAmount = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxRiskPct;
-   currency.Run(maxRiskAmount);
+   trader.Run();
 }
 
 void OnTimer()
 {
-   GlobaltimeOutExpiredBuy  = true;
-   GlobaltimeOutExpiredSell = true;
+   trader.OnTimer();
 }
